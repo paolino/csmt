@@ -33,5 +33,9 @@ jobs:
           name: csmt-utxo-image
           path: output-docker-image
       - name: Build tarball
-        if: false
-        run: nix build .#linux64.tarball
+        run: nix build .#linux64.tarball -o output-linux-tarball
+      - name: Upload tarball Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: csmt-utxo-tarball
+          path: output-linux-tarball
