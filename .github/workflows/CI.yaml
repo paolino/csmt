@@ -25,3 +25,7 @@ jobs:
           authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
       - name: Build executable
         run: nix build -L .#csmt-utxo
+      - name: Build docker image
+        run: nix build -L .#docker-image
+      - name: Build tarball
+        run: nix build -L .#linux64.tarball
