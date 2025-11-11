@@ -21,6 +21,7 @@ hlint:
 
 unit match="":
     #!/usr/bin/env bash
+    cabal build all --enable-tests
     # shellcheck disable=SC2050
     if [[ '{{ match }}' == "" ]]; then
       cabal test unit-test \
