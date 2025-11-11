@@ -1,10 +1,19 @@
 { indexState, pkgs, ... }:
 
 let
-  libOverlay = { lib, pkgs, ... }:
-    {
-
+  libOverlay = { lib, pkgs, ... }: { };
+  testShell = { pkgs, ... }: {
+    tools = {
+      cabal = { index-state = indexState; };
+      cabal-fmt = { index-state = indexState; };
+      fourmolu = { index-state = indexState; };
+      hlint = { index-state = indexState; };
     };
+    buildInputs = [ pkgs.nixfmt-classic pkgs.gitAndTools.git pkgs.just ];
+    shellHook = ''
+      echo "Entering shell for csmt-utxo testing"
+    '';
+  };
 
   shell = { pkgs, ... }: {
     tools = {
@@ -46,10 +55,22 @@ let
     shell = shell { inherit pkgs; };
     modules = [ libOverlay ];
   };
+  mkProjectTest = ctx@{ lib, pkgs, ... }: {
+    name = "csmt-utxo-test";
+    src = ./..;
+    compiler-nix-name = "ghc984";
+    shell = testShell { inherit pkgs; };
+    modules = [ libOverlay ];
+  };
   project = pkgs.haskell-nix.cabalProject' mkProject;
+  projectTest = pkgs.haskell-nix.cabalProject' mkProjectTest;
 
 in {
   devShells.default = project.shell;
+  devShells = {
+    test-shell = projectTest.shell;
+    dev-shell = project.shell;
+  };
   inherit project;
   packages.csmt-utxo = project.hsPkgs.csmt-utxo.components.exes.csmt-utxo;
   musl64 = project.projectCross.musl64.hsPkgs;
