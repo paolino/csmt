@@ -15,7 +15,7 @@ import CSMT.Interface
     , Key
     , Query
     )
-import Control.Monad.State
+import Control.Monad.Trans.State.Strict
     ( State
     , gets
     , modify'

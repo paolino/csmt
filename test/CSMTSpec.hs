@@ -7,19 +7,22 @@ import CSMT
     ( Direction (L, R)
     , Indirect (..)
     , Key
+    , Proof
     , Pure
     , compareKeys
     , inserting
+    , mkInclusionProof
     , pureCSMT
     , runPure
+    , verifyInclusionProof
     )
-import Data.Foldable (foldl')
+import Data.Foldable (foldl', forM_)
 import Data.Functor ((<&>))
-import Data.List (isPrefixOf)
+import Data.List (isPrefixOf, nub)
 import Data.Map qualified as Map
 import Data.Map.Strict (Map)
 import Test.Hspec (Spec, describe, it, shouldBe)
-import Test.QuickCheck (forAll, shuffle)
+import Test.QuickCheck (forAll, listOf, listOf1, shuffle)
 import Test.QuickCheck.Gen (Gen, elements)
 
 mk :: Map Key (Indirect Int) -> Key -> Int -> Map Key (Indirect Int)
@@ -28,15 +31,15 @@ mk m k v = snd $ runPure m $ mkM k v
 mkM :: Key -> Int -> Pure Int ()
 mkM = inserting pureCSMT (+)
 
--- pfM :: Key -> Pure Int (Maybe (Proof Int))
--- pfM = mkProof (pureQuery 0)
+pfM :: Key -> Pure Int (Maybe (Proof Int))
+pfM = mkInclusionProof pureCSMT
 
--- vpfM :: Key -> Int -> Pure Int Bool
--- vpfM k v = do
---     mp <- pfM k
---     case mp of
---         Nothing -> pure False
---         Just p -> verifyProof (pureQuery 0) (+) v p
+vpfM :: Key -> Int -> Pure Int Bool
+vpfM k v = do
+    mp <- pfM k
+    case mp of
+        Nothing -> pure False
+        Just p -> verifyInclusionProof pureCSMT (+) v p
 
 i :: Key -> a -> Indirect a
 i p v = Indirect{jump = p, value = v}
@@ -159,6 +162,52 @@ spec = do
                 let kvs = zip keys [1 .. 2 ^ n]
                 inserted kvs `shouldBe` summed n kvs
 
+    describe "proving inclusion" $ do
+        it "verifies a simple fact"
+            $ let (r, _m) = runPure [] $ do
+                    mkM [L] (1 :: Int)
+                    vpfM [L] 1
+              in  r `shouldBe` True
+        it "verifies a deeper fact"
+            $ let (r, _m) = runPure [] $ do
+                    mkM [L, R, L] (42 :: Int)
+                    vpfM [L, R, L] 42
+              in  r `shouldBe` True
+        it "verifies a fact with siblings"
+            $ let (r, _m) = runPure [] $ do
+                    mkM [L] (10 :: Int)
+                    mkM [R] (20 :: Int)
+                    vpfM [L] 10
+              in  r `shouldBe` True
+        it "verifies another fact with siblings"
+            $ let (r, _m) = runPure [] $ do
+                    mkM [L, L] (5 :: Int)
+                    mkM [L, R] (15 :: Int)
+                    mkM [R, L] (25 :: Int)
+                    mkM [R, R] (35 :: Int)
+                    vpfM [R, L] 25
+              in  r `shouldBe` True
+        it "verifies random facts in a full tree"
+            $ forAll (elements [1 .. 14])
+            $ \n -> forAll (listOf $ elements [0 .. 2 ^ n - 1]) $ \ms ->
+                forAll (genPaths n) $ \keys -> forM_ ms $ \m -> do
+                    let kvs = zip keys [1 .. 2 ^ n]
+                        (testKey, testValue) = kvs !! m
+                        (r, _m) = runPure (inserted kvs) $ vpfM testKey testValue
+                    r `shouldBe` True
+        it "verifies random facts in a sparse tree"
+            $ forAll (elements [128 .. 256])
+            $ \n ->
+                forAll (genSomePaths n) $ \keys ->
+                    forAll (listOf $ elements [0 .. length keys - 1]) $ \ks ->
+                        forM_ ks $ \m -> do
+                            let kvs = zip keys [1 ..]
+                                (testKey, testValue) = kvs !! m
+                                (r, _m) =
+                                    runPure (inserted kvs)
+                                        $ vpfM testKey testValue
+                            r `shouldBe` True
+
 inserted :: [(Key, Int)] -> Map Key (Indirect Int)
 inserted = foldl' (\m (k, v) -> mk m k v) []
 
@@ -168,7 +217,7 @@ summed n kvs =
         let
             w = (Map.fromList kvs Map.!)
         in
-            (x, i [] $ sum [w p | p <- allPaths n, x `isPrefixOf` p])
+            (x, i [] $ foldl' (+) 0 [w p | p <- allPaths n, x `isPrefixOf` p])
   where
     allInits :: Int -> [Key]
     allInits 0 = [[]]
@@ -186,31 +235,14 @@ allPaths c = do
 genPaths :: Int -> Gen [Key]
 genPaths n = shuffle (allPaths n)
 
--- describe "Sparse Merkle Tree proof" $ do
---     it "verifies a simple fact"
---         $ let (r, _m) = runPure [] $ do
---                 mkM [L] (1 :: Int)
---                 vpfM [L] 1
---           in  r `shouldBe` True
---     it "verifies a deeper fact"
---         $ let (r, _m) = runPure [] $ do
---                 mkM [L, R, L] (42 :: Int)
---                 vpfM [L, R, L] 42
---           in  r `shouldBe` True
---     it "verifies a fact with siblings"
---         $ let (r, _m) = runPure [] $ do
---                 mkM [L] (10 :: Int)
---                 mkM [R] (20 :: Int)
---                 vpfM [L] 10
---           in  r `shouldBe` True
---     it "verifies another fact with siblings"
---         $ let (r, _m) = runPure [] $ do
---                 mkM [L, L] (5 :: Int)
---                 mkM [L, R] (15 :: Int)
---                 mkM [R, L] (25 :: Int)
---                 mkM [R, R] (35 :: Int)
---                 vpfM [R, L] 25
---           in  r `shouldBe` True
+genSomePaths :: Int -> Gen [Key]
+genSomePaths n = fmap nub <$> listOf1 $ do
+    let go 0 = return []
+        go c = do
+            d <- elements [L, R]
+            ds <- go (c - 1)
+            return (d : ds)
+    go n
 
 -- fact :: Gen (ByteString, ByteString)
 -- fact = do
