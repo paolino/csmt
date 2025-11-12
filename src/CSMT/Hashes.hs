@@ -6,13 +6,25 @@ module CSMT.Hashes
     , Hash (..)
     , renderHash
     , parseHash
+    , insertKV
+    , root
+    , inclusionProof
+    , verifyInclusionProof
+    , renderProof
+    , parseProof
     )
 where
 
-import Crypto.Hash (Keccak_256, hash)
+import CSMT.Insertion (inserting)
+import CSMT.Interface (CSMT (..), Direction (..), Key)
+import CSMT.Interface qualified as Interface
+import CSMT.Proofs qualified as Proof
+import Crypto.Hash (Blake2b_256, hash)
+import Data.Bits (Bits (..))
 import Data.ByteArray (ByteArray, ByteArrayAccess, convert)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
+import Data.Word (Word8)
 
 -- | A simple wrapper around Keccak-256 hashes, with a combining function.
 newtype Hash = Hash ByteString
@@ -21,7 +33,7 @@ newtype Hash = Hash ByteString
 
 -- | Create a Keccak-256 hash from a ByteString.
 mkHash :: ByteString -> Hash
-mkHash = convert . hash @ByteString @Keccak_256
+mkHash = convert . hash @ByteString @Blake2b_256
 
 -- | Combine two hashes by concatenating their ByteString representations
 --   and hashing the result.
@@ -35,3 +47,64 @@ parseHash :: ByteString -> Maybe Hash
 parseHash bs
     | B.length bs == 32 = Just (Hash bs)
     | otherwise = Nothing
+
+insertKV :: Monad m => CSMT m Hash -> ByteString -> ByteString -> m ()
+insertKV csmt k v = inserting csmt addHash (byteStringToKey k) (mkHash v)
+
+byteStringToKey :: ByteString -> Key
+byteStringToKey bs = concatMap byteToDirections (B.unpack $ renderHash $ mkHash bs)
+
+byteToDirections :: Word8 -> Key
+byteToDirections byte = [if testBit byte i then R else L | i <- [7, 6 .. 0]]
+
+root :: Monad m => CSMT m Hash -> m (Maybe ByteString)
+root csmt = do
+    mi <- Interface.root csmt
+    case mi of
+        Nothing -> return Nothing
+        Just v -> return (Just $ renderHash v)
+
+renderProof :: Proof.Proof Hash -> ByteString
+renderProof = B.concat . fmap renderStep
+  where
+    renderStep (dir, h) =
+        let dirByte = case dir of
+                L -> 0x00
+                R -> 0x01
+        in  B.cons dirByte (renderHash h)
+
+parseProof :: ByteString -> Maybe (Proof.Proof Hash)
+parseProof = go
+  where
+    go bs
+        | B.null bs = Just []
+        | B.length bs < 33 = Nothing
+        | otherwise = do
+            let (dirByte, rest) = B.splitAt 1 bs
+                (hashBytes, rest') = B.splitAt 32 rest
+            dir <- case B.head dirByte of
+                0x00 -> Just L
+                0x01 -> Just R
+                _ -> Nothing
+            h <- parseHash hashBytes
+            steps <- go rest'
+            Just ((dir, h) : steps)
+
+inclusionProof
+    :: Monad m => CSMT m Hash -> ByteString -> m (Maybe ByteString)
+inclusionProof csmt k = do
+    mp <- Proof.mkInclusionProof csmt (byteStringToKey k)
+    pure $ fmap renderProof mp
+
+verifyInclusionProof
+    :: Monad m
+    => CSMT m Hash
+    -> ByteString
+    -> ByteString
+    -> m Bool
+verifyInclusionProof csmt value proofBs = do
+    case parseProof proofBs of
+        Nothing -> pure False
+        Just proof -> do
+            let valueHash = mkHash value
+            Proof.verifyInclusionProof csmt addHash valueHash proof

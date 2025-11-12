@@ -15,6 +15,7 @@ module CSMT.Interface
     , CSMT (..)
     , fromBool
     , toBool
+    , root
     )
 where
 
@@ -71,3 +72,10 @@ compareKeys (x : xs) (y : ys)
         let (j, o, r) = compareKeys xs ys
         in  (x : j, o, r)
     | otherwise = ([], x : xs, y : ys)
+
+root :: Monad m => CSMT m a -> m (Maybe a)
+root csmt = do
+    mi <- query csmt []
+    case mi of
+        Nothing -> return Nothing
+        Just Indirect{value} -> return (Just value)

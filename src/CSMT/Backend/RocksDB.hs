@@ -68,7 +68,7 @@ config :: Config
 config =
     Config
         { createIfMissing = True
-        , errorIfExists = True
+        , errorIfExists = False
         , paranoidChecks = False
         , maxFiles = Nothing
         , prefixLength = Nothing

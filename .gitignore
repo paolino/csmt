@@ -4,3 +4,4 @@ tmp
 secrets
 result
 .cabal-fmt*
+testdb
