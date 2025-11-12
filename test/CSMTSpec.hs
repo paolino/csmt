@@ -62,6 +62,7 @@ vpfMInt = vpfM (+)
 
 vpfMHash :: Key -> Hash -> Pure Hash Bool
 vpfMHash = vpfM addHash
+
 i :: Key -> a -> Indirect a
 i p v = Indirect{jump = p, value = v}
 
