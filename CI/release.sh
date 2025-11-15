@@ -37,17 +37,17 @@ if ! gh release view "$release" >/dev/null 2>&1; then
 fi
 
 version=$(nix eval .#version --raw)
-echo "Building csmt-utxo artifacts version $version"
+echo "Building csmt artifacts version $version"
 nix build ".#$platform.tarball"
 
-tarball=result/csmt-utxo-$version-$platform.tar.gz
+tarball=result/csmt-$version-$platform.tar.gz
 echo "Tarball path: $tarball"
 
 mktempdir=$(mktemp -d)
-releaseTarball="$mktempdir/csmt-utxo-$release-$platform.tar.gz"
+releaseTarball="$mktempdir/csmt-$release-$platform.tar.gz"
 
 cp -L "$tarball" "$releaseTarball"
 
 gh release upload "$release" "$releaseTarball"
 
-echo "Release URL: https://github.com/paolino/csmt-utxo/releases/tag/$release"
+echo "Release URL: https://github.com/paolino/csmt/releases/tag/$release"

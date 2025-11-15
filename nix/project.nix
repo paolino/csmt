@@ -21,7 +21,7 @@ let
 
     ];
     shellHook = ''
-      echo "Entering shell for csmt-utxo CLI development"
+      echo "Entering shell for csmt CLI development"
     '';
   };
 
@@ -33,12 +33,11 @@ let
       configureFlags = map (l: "--ghc-option=-optl=-L${l}/lib") (libs);
     };
   musl = { pkgs, ... }: {
-    packages.csmt-utxo.components.exes.csmt-utxo =
-      (fullyStaticOptions { inherit pkgs; });
+    packages.csmt.components.exes.csmt = (fullyStaticOptions { inherit pkgs; });
     doHaddock = false;
   };
   mkProject = ctx@{ lib, pkgs, ... }: {
-    name = "csmt-utxo";
+    name = "csmt";
     src = ./..;
     compiler-nix-name = "ghc984";
     shell = shell { inherit pkgs; };
@@ -50,7 +49,7 @@ let
 in {
   devShells.default = project.shell;
   inherit project;
-  packages.csmt-utxo = project.hsPkgs.csmt-utxo.components.exes.csmt-utxo;
-  packages.unit-tests = project.hsPkgs.csmt-utxo.components.exes.unit-tests-exe;
+  packages.csmt = project.hsPkgs.csmt.components.exes.csmt;
+  packages.unit-tests = project.hsPkgs.csmt.components.exes.unit-tests-exe;
   musl64 = project.projectCross.musl64.hsPkgs;
 }

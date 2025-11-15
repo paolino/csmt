@@ -2,15 +2,15 @@
 
 let
   inherit (pkgs) lib;
-  csmt-utxo = project.packages.csmt-utxo;
+  csmt = project.packages.csmt;
   tarball-derivation = pkgs.stdenv.mkDerivation {
-    pname = "csmt-utxo";
+    pname = "csmt";
     inherit version;
     buildInputs = with pkgs.buildPackages; [ nix ];
     phases = [ "unpackPhase" "installPhase" ];
     unpackPhase = ''
       mkdir -p $out/unpacked
-      cp ${csmt-utxo}/bin/* $out/unpacked
+      cp ${csmt}/bin/* $out/unpacked
       ( cd $out/unpacked ;
         ${rewrite-libs}/bin/rewrite-libs . `ls -1 | grep -Fv .dylib`
         for a in *; do /usr/bin/codesign -f -s - $a; done

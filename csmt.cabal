@@ -1,10 +1,14 @@
 cabal-version:   3.4
-name:            csmt-utxo
-version:         0.2.0.0
+name:            csmt
+version:         0.3.0.0
 synopsis:
-  An http service around a compact sparse merkle tree implementation for UTXO set management
+  An http service around a compact sparse merkle tree implementation
 
-description:     CSMT is a Haskell library implementing a Compact Sparse Mer
+description:
+  CSMT is a Haskell library implementing a Compact Sparse Merkle Tree (CSMT)
+  data structure with support for persistent storage backends.
+  It provides efficient insertion, deletion, and proof generation functionalities.
+
 license:         Apache-2.0
 license-file:    LICENSE
 author:          Paolo Veronelli
@@ -47,7 +51,7 @@ common warnings
 
 library
   import:           warnings
-  other-modules:    Paths_csmt_utxo
+  other-modules:    Paths_csmt
   exposed-modules:
     App
     CSMT
@@ -74,13 +78,13 @@ library
   hs-source-dirs:   src
   default-language: Haskell2010
 
-executable csmt-utxo
+executable csmt
   import:           warnings
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N -O2
   main-is:          app/main.hs
   build-depends:
     , base
-    , csmt-utxo
+    , csmt
 
   default-language: Haskell2010
 
@@ -91,7 +95,7 @@ library test-lib
   build-depends:
     , base
     , containers
-    , csmt-utxo
+    , csmt
     , QuickCheck
 
   hs-source-dirs:   test-lib
@@ -104,8 +108,8 @@ common unit-test-common
   build-depends:
     , base
     , bytestring
-    , csmt-utxo
-    , csmt-utxo:test-lib
+    , csmt
+    , csmt:test-lib
     , filepath
     , hspec
     , memory

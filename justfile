@@ -9,7 +9,7 @@ format:
     for i in {1..3}; do
         fourmolu -i src app test CI/rewrite-libs
     done
-    cabal-fmt -i csmt-utxo.cabal CI/rewrite-libs/rewrite-libs.cabal
+    cabal-fmt -i csmt.cabal CI/rewrite-libs/rewrite-libs.cabal
     nixfmt ./*.nix
     nixfmt nix/*.nix
     nixfmt CI/rewrite-libs/*.nix
@@ -42,7 +42,7 @@ CI:
     set -euo pipefail
     just build
     just unit
-    cabal-fmt -c csmt-utxo.cabal CI/rewrite-libs/rewrite-libs.cabal
+    cabal-fmt -c csmt.cabal CI/rewrite-libs/rewrite-libs.cabal
     fourmolu -m check src app test CI/rewrite-libs
     hlint -c src app test CI/rewrite-libs
 
@@ -58,16 +58,16 @@ build-docker tag='latest':
     nix build .#proxy-docker-image
     docker load < result
     version=$(nix eval --raw .#version)
-    docker image tag ghcr.io/paolino/csmt-utxo/csmt-utxo-proxy:"$version" \
-        "ghcr.io/paolino/csmt-utxo/csmt-utxo-proxy:{{ tag }}"
-    docker image tag ghcr.io/paolino/csmt-utxo/csmt-utxo-proxy:"$version" \
-        "ghcr.io/paolino/csmt-utxo/csmt-utxo-proxy:latest"
+    docker image tag ghcr.io/paolino/csmt/csmt-proxy:"$version" \
+        "ghcr.io/paolino/csmt/csmt-proxy:{{ tag }}"
+    docker image tag ghcr.io/paolino/csmt/csmt-proxy:"$version" \
+        "ghcr.io/paolino/csmt/csmt-proxy:latest"
     nix build .#source-docker-image
     docker load < result
-    docker image tag ghcr.io/paolino/csmt-utxo/csmt-utxo-source:"$version" \
-        "ghcr.io/paolino/csmt-utxo/csmt-utxo-source:{{ tag }}"
-    docker image tag ghcr.io/paolino/csmt-utxo/csmt-utxo-source:"$version" \
-        "ghcr.io/paolino/csmt-utxo/csmt-utxo-source:latest"
+    docker image tag ghcr.io/paolino/csmt/csmt-source:"$version" \
+        "ghcr.io/paolino/csmt/csmt-source:{{ tag }}"
+    docker image tag ghcr.io/paolino/csmt/csmt-source:"$version" \
+        "ghcr.io/paolino/csmt/csmt-source:latest"
 
 start-docker bg="false":
     #!/usr/bin/env bash
@@ -93,10 +93,10 @@ stop-docker:
 
 push-docker tag='latest':
     #!/usr/bin/env bash
-    docker push "ghcr.io/paolino/csmt-utxo/csmt-utxo-source:{{ tag }}"
-    docker push "ghcr.io/paolino/csmt-utxo/csmt-utxo-source:latest"
-    docker push "ghcr.io/paolino/csmt-utxo/csmt-utxo-proxy:{{ tag }}"
-    docker push "ghcr.io/paolino/csmt-utxo/csmt-utxo-proxy:latest"
+    docker push "ghcr.io/paolino/csmt/csmt-source:{{ tag }}"
+    docker push "ghcr.io/paolino/csmt/csmt-source:latest"
+    docker push "ghcr.io/paolino/csmt/csmt-proxy:{{ tag }}"
+    docker push "ghcr.io/paolino/csmt/csmt-proxy:latest"
 
 release version arch:
     #!/usr/bin/env bash
@@ -108,7 +108,7 @@ release version arch:
 integration match="":
     #!/usr/bin/env bash
     set -euo pipefail
-    cabal test csmt-utxo-integration-test \
+    cabal test csmt-integration-test \
         --test-show-details=direct \
         --test-option=--match \
         --test-option="{{ match }}"
@@ -116,5 +116,5 @@ integration match="":
 integration-all:
     #!/usr/bin/env bash
     set -euo pipefail
-    cabal test csmt-utxo-integration-test \
+    cabal test csmt-integration-test \
         --test-show-details=direct

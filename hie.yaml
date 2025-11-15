@@ -1,13 +1,13 @@
 cradle:
   cabal:
     - path: "src"
-      component: "lib:csmt-utxo"
+      component: "lib:csmt"
 
     - path: "app/main.hs"
-      component: "csmt-utxo:exe:csmt-utxo"
+      component: "csmt:exe:csmt"
 
     - path: "test"
-      component: "csmt-utxo:test:unit-test"
+      component: "csmt:test:unit-test"
 
     - path: "CI/rewrite-libs/src/rewrite-libs.hs"
       component: "rewrite-libs:exe:rewrite-libs"
