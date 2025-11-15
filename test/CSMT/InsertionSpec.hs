@@ -15,13 +15,13 @@ import CSMT.Test.Lib
     )
 import Test.Hspec (Spec, describe, it, shouldBe)
 import Test.QuickCheck
-    ( forAll
+    ( forAll, shuffle
     )
 import Test.QuickCheck.Gen (elements)
 
 spec :: Spec
 spec = do
-    describe "inserting" $ do
+    describe "insertion" $ do
         it "inserts 1 key L"
             $ let
                 rs = insertInt [] [L] (1 :: Int)
@@ -123,6 +123,6 @@ spec = do
 
         it "inserting all leaves populates the full tree"
             $ forAll (elements [1 .. 10])
-            $ \n -> forAll (genPaths n) $ \keys -> do
+            $ \n -> forAll (genPaths n >>= shuffle) $ \keys -> do
                 let kvs = zip keys [1 :: Int .. 2 ^ n]
                 inserted (+) kvs `shouldBe` summed n kvs
