@@ -1,25 +1,26 @@
 {-# LANGUAGE OverloadedLists #-}
 
 module CSMT.Test.Lib
-    ( insert
-    , insertInt
-    , insertM
-    , insertMInt
-    , delete
+    ( delete
     , deleteInt
     , deleteM
     , deleteMInt
-    , proofM
-    , verifyM
-    , verifyMInt
-    , verifyMHash
-    , indirect
-    , intHash
-    , inserted
-    , summed
+    , genKey
     , genPaths
     , genSomePaths
+    , indirect
+    , insert
+    , inserted
+    , insertInt
+    , insertM
+    , insertMInt
+    , intHash
     , mkDeletionPath
+    , proofM
+    , summed
+    , verifyM
+    , verifyMHash
+    , verifyMInt
     )
 where
 
@@ -53,6 +54,7 @@ import Data.String (IsString (..))
 import Test.QuickCheck
     ( listOf1
     , shuffle
+    , listOf
     )
 import Test.QuickCheck.Gen (Gen, elements)
 
@@ -132,6 +134,9 @@ allPaths 0 = [[]]
 allPaths c = do
     p <- allPaths (c - 1)
     [L : p, R : p]
+
+genKey :: Gen Key
+genKey = listOf $ elements [L, R]
 
 genPaths :: Int -> Gen [Key]
 genPaths n = shuffle (allPaths n)
