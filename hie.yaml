@@ -9,5 +9,8 @@ cradle:
     - path: "test"
       component: "csmt:test:unit-test"
 
+    - path: "test-lib"
+      component: "csmt:lib:test-lib"
+
     - path: "CI/rewrite-libs/src/rewrite-libs.hs"
       component: "rewrite-libs:exe:rewrite-libs"
