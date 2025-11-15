@@ -11,7 +11,8 @@ import CSMT
     )
 import CSMT.Hashes (addHash)
 import CSMT.Test.Lib
-    ( deleteMInt
+    ( delete
+    , deleteMInt
     , genPaths
     , genSomePaths
     , insertMInt
@@ -31,7 +32,7 @@ import Test.QuickCheck.Gen (elements)
 
 spec :: Spec
 spec = do
-    describe "proving inclusion" $ do
+    describe "proving" $ do
         it "verifies a simple fact"
             $ let (r, _m) = runPure [] $ do
                     insertMInt [L] (1 :: Int)
@@ -74,13 +75,13 @@ spec = do
             testRandomFactsInASparseTree h a vpf = forAll (elements [128 .. 256])
                 $ \n ->
                     forAll (genSomePaths n) $ \keys ->
-                        forAll (listOf $ elements [0 .. length keys - 1]) $ \ks ->
+                        forAll (listOf $ elements [0 .. length keys - 1]) $ \ks -> do
+                            let kvs = zip keys $ h <$> [1 ..]
+                                tree = inserted a kvs
                             forM_ ks $ \m -> do
-                                let kvs = zip keys $ h <$> [1 ..]
-                                    (testKey, testValue) = kvs !! m
+                                let (testKey, testValue) = kvs !! m
                                     (r, _m) =
-                                        runPure (inserted a kvs)
-                                            $ vpf testKey testValue
+                                        runPure tree $ vpf testKey testValue
                                 r `shouldBe` True
         it "verifies random facts in a sparse tree"
             $ testRandomFactsInASparseTree id (+) verifyMInt
@@ -98,3 +99,26 @@ spec = do
                     deleteMInt [L]
                     verifyMInt [L] 0
             r `shouldBe` False
+        let testRandomDeletedFactsInASparseTree
+                :: (Int -> a)
+                -> (a -> a -> a)
+                -> (Key -> a -> Pure a Bool)
+                -> Property
+            testRandomDeletedFactsInASparseTree h a vpf =
+                forAll (elements [128 .. 256])
+                    $ \n ->
+                        forAll (genSomePaths n) $ \keys ->
+                            forAll (listOf $ elements [0 .. length keys - 1])
+                                $ \ks -> do
+                                    let kvs = zip keys $ h <$> [1 ..]
+                                        tree = inserted a kvs
+                                    forM_ ks $ \m -> do
+                                        let (testKey, testValue) = kvs !! m
+                                            (r, _m) =
+                                                runPure (delete a tree testKey)
+                                                    $ vpf testKey testValue
+                                        r `shouldBe` False
+        it "rejects a random deleted int fact"
+            $ testRandomDeletedFactsInASparseTree id (+) verifyMInt
+        it "rejects a random deleted hash fact"
+            $ testRandomDeletedFactsInASparseTree intHash addHash verifyMHash
