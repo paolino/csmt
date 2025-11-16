@@ -53,12 +53,12 @@ library
   import:           warnings
   other-modules:    Paths_csmt
   exposed-modules:
-    App
     CSMT
     CSMT.Backend.Pure
     CSMT.Backend.RocksDB
     CSMT.Backend.RocksDB.Key
     CSMT.Deletion
+    CSMT.Frontend.CLI.App
     CSMT.Hashes
     CSMT.Insertion
     CSMT.Interface
@@ -79,13 +79,12 @@ library
 
   hs-source-dirs:   src
   default-language: Haskell2010
-  other-modules:
-    Paths_csmt
+  other-modules:    Paths_csmt
 
 executable csmt
   import:           warnings
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N -O2
-  main-is:          app/main.hs
+  main-is:          app/cli/main.hs
   build-depends:
     , base
     , csmt

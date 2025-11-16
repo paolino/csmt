@@ -1,4 +1,4 @@
-module App (main) where
+module CSMT.Frontend.CLI.App (main) where
 
 import CSMT.Backend.RocksDB
     ( RunRocksDB (RunRocksDB)
