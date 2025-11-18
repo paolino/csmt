@@ -9,10 +9,12 @@ where
 import CSMT.Interface
     ( CSMT (..)
     , Direction (..)
+    , Hashing (..)
     , Indirect (..)
     , Key
     , Op (..)
     , Query
+    , addWithDirection
     , compareKeys
     , opposite
     )
@@ -25,45 +27,46 @@ data DeletionPath a where
         :: Key -> Direction -> DeletionPath a -> Indirect a -> DeletionPath a
     deriving (Show, Eq)
 
-addWithDirection :: (a -> a -> a) -> Direction -> a -> a -> a
-addWithDirection add L left right = add left right
-addWithDirection add R left right = add right left
-
-deleting :: Monad m => CSMT m a -> (a -> a -> a) -> Key -> m ()
-deleting csmt add key = do
+deleting
+    :: Monad m => CSMT m a -> Hashing a -> Key -> m ()
+deleting csmt hashing key = do
     mpath <- newDeletionPath (query csmt) key
     case mpath of
         Nothing -> pure ()
-        Just path -> change csmt $ deletionPathToOps add path
+        Just path -> change csmt $ deletionPathToOps hashing path
 
 deletionPathToOps
-    :: (a -> a -> a)
+    :: forall a
+     . Hashing a
     -> DeletionPath a
     -> [Op a]
-deletionPathToOps add = snd . go []
+deletionPathToOps hashing = snd . go []
   where
+    go :: Key -> DeletionPath a -> (Maybe (Indirect a), [Op a])
     go k (Value _ _v) = (Nothing, [Delete k])
     go k (Branch j d v i) =
         let
             (msb, xs) = go (k <> j <> [d]) v
         in
             case msb of
-                Just v' ->
-                    let h = addWithDirection add d v' (value i)
-                    in  ( Just h
-                        , [Insert k $ Indirect{jump = j, value = h}] <> xs
+                Just i' ->
+                    let h = addWithDirection hashing d i' i
+                        i'' = Indirect{jump = j, value = h}
+                    in  ( Just i''
+                        , [Insert k i''] <> xs
                         )
                 Nothing ->
-                    ( Just (value i)
-                    , [ Insert k
-                            $ Indirect
+                    let i' =
+                            Indirect
                                 { jump = j <> [opposite d] <> jump i
                                 , value = value i
                                 }
-                      , Delete (k <> j <> [opposite d])
-                      ]
-                        <> xs
-                    )
+                    in  ( Just i'
+                        , [ Insert k i'
+                          , Delete (k <> j <> [opposite d])
+                          ]
+                            <> xs
+                        )
 
 newDeletionPath
     :: forall m a

@@ -5,21 +5,27 @@ where
 
 import CSMT
     ( Direction (L, R)
+    , Hashing
     , Key
     , Pure
     , runPure
     )
-import CSMT.Hashes (addHash)
+import CSMT.Hashes (hashHashing)
 import CSMT.Test.Lib
     ( delete
     , deleteMInt
     , genPaths
     , genSomePaths
+    , insertMHash
     , insertMInt
+    , insertMList
     , inserted
     , intHash
+    , intHashing
+    , listHashing
     , verifyMHash
     , verifyMInt
+    , verifyMList
     )
 import Data.Foldable (forM_)
 import Test.Hspec (Spec, describe, it, shouldBe)
@@ -35,58 +41,142 @@ spec = do
     describe "proving" $ do
         it "verifies a simple fact"
             $ let (r, _m) = runPure [] $ do
-                    insertMInt [L] (1 :: Int)
+                    insertMInt [L] 1
                     verifyMInt [L] 1
+              in  r `shouldBe` True
+        it "verifies a simple fact hash"
+            $ let (r, _m) = runPure [] $ do
+                    insertMHash [L] $ intHash (1 :: Int)
+                    verifyMHash [L] $ intHash (1 :: Int)
+              in  r `shouldBe` True
+        it "verifies a simple fact"
+            $ let (r, _m) = runPure [] $ do
+                    insertMInt [R] 1
+                    verifyMInt [R] 1
+              in  r `shouldBe` True
+        it "verifies a simple fact hash"
+            $ let (r, _m) = runPure [] $ do
+                    insertMHash [R] $ intHash (1 :: Int)
+                    verifyMHash [R] $ intHash (1 :: Int)
               in  r `shouldBe` True
         it "verifies a deeper fact"
             $ let (r, _m) = runPure [] $ do
-                    insertMInt [L, R, L] (42 :: Int)
+                    insertMInt [L, L] 10
+                    verifyMInt [L, L] 10
+              in  r `shouldBe` True
+        it "verifies a deeper fact hash"
+            $ let (r, _m) = runPure [] $ do
+                    insertMHash [L, L] $ intHash (10 :: Int)
+                    verifyMHash [L, L] $ intHash (10 :: Int)
+              in  r `shouldBe` True
+        it "verifies singleton [R,R] hash"
+            $ let (r, _m) = runPure [] $ do
+                    insertMHash [R, R] $ intHash (10 :: Int)
+                    verifyMHash [R, R] $ intHash (10 :: Int)
+              in  r `shouldBe` True
+        it "verifies singleton [R,L] hash"
+            $ let (r, _m) = runPure [] $ do
+                    insertMHash [R, L] $ intHash (10 :: Int)
+                    verifyMHash [R, L] $ intHash (10 :: Int)
+              in  r `shouldBe` True
+        it "verifies a deeper fact"
+            $ let (r, _m) = runPure [] $ do
+                    insertMInt [R, R] 10
+                    insertMInt [R, L] 10
+                    verifyMInt [R, R] 10
+              in  r `shouldBe` True
+        it "verifies a deeper fact list"
+            $ let (r, _m) = runPure [] $ do
+                    insertMList [R, R] [10 :: Int]
+                    insertMList [R, L] [10 :: Int]
+                    verifyMList [R, R] [10 :: Int]
+              in  r `shouldBe` True
+        it "verifies a deeper fact hash"
+            $ let (r, _m) = runPure [] $ do
+                    insertMHash [R, R] $ intHash 1
+                    insertMHash [R, L] $ intHash 2
+                    verifyMHash [R, L] $ intHash 2
+              in  r `shouldBe` True
+        it "verifies a deeper fact hash"
+            $ let (r, _m) = runPure [] $ do
+                    insertMHash [R, R] $ intHash (10 :: Int)
+                    insertMHash [R, L] $ intHash (10 :: Int)
+                    verifyMHash [R, R] $ intHash (10 :: Int)
+              in  r `shouldBe` True
+        it "verifies a deeper fact"
+            $ let (r, _m) = runPure [] $ do
+                    insertMInt [L, R, L] 42
                     verifyMInt [L, R, L] 42
               in  r `shouldBe` True
-        it "verifies a fact with siblings"
+        it "verifies a deeper fact hash"
             $ let (r, _m) = runPure [] $ do
-                    insertMInt [L] (10 :: Int)
-                    insertMInt [R] (20 :: Int)
+                    insertMHash [L, R, L] $ intHash (42 :: Int)
+                    verifyMHash [L, R, L] $ intHash (42 :: Int)
+              in  r `shouldBe` True
+        it "verifies a factith siblings"
+            $ let (r, _m) = runPure [] $ do
+                    insertMInt [L] 10
+                    insertMInt [R] 20
                     verifyMInt [L] 10
               in  r `shouldBe` True
-        it "verifies another fact with siblings"
+        it "verifies another factith siblings"
             $ let (r, _m) = runPure [] $ do
-                    insertMInt [L, L] (5 :: Int)
-                    insertMInt [L, R] (15 :: Int)
-                    insertMInt [R, L] (25 :: Int)
-                    insertMInt [R, R] (35 :: Int)
+                    insertMInt [L, L] 5
+                    insertMInt [L, R] 15
+                    insertMInt [R, L] 25
+                    insertMInt [R, R] 35
                     verifyMInt [R, L] 25
               in  r `shouldBe` True
+        it "verifies a fact against a full tree" $ do
+            let (r, _m) = runPure [] $ do
+                    insertMInt [R, R] 10
+                    insertMInt [R, L] 10
+                    insertMInt [L, L] 11
+                    verifyMInt [R, R] 10
+            r `shouldBe` True
         let testRandomFactsInAFullTree
-                :: (Int -> a) -> (a -> a -> a) -> (Key -> a -> Pure a Bool) -> Property
-            testRandomFactsInAFullTree h a vpf = forAll (elements [1 .. 14])
-                $ \n -> forAll (listOf $ elements [0 .. 2 ^ n - 1]) $ \ms ->
+                :: (Int -> a)
+                -> Hashing a
+                -> (Key -> a -> Pure a Bool)
+                -> Property
+            testRandomFactsInAFullTree h hashing vpf = forAll (elements [1 .. 8])
+                $ \n -> forAll (listOf $ elements [0]) $ \ms ->
                     forAll (genPaths n) $ \keys -> forM_ ms $ \m -> do
-                        let kvs = zip keys $ h <$> [1 .. 2 ^ n]
+                        let kvs = zip keys $ h . (1000 +) <$> [1 .. 2 ^ n]
                             (testKey, testValue) = kvs !! m
-                            (r, _m) = runPure (inserted a kvs) $ vpf testKey testValue
+                            db = inserted hashing kvs
+                            (r, _m) =
+                                runPure db
+                                    $ vpf testKey testValue
                         r `shouldBe` True
-        it "verifies random facts in a full tree"
-            $ testRandomFactsInAFullTree id (+) verifyMInt
-        it "verifies random hash facts in a full tree"
-            $ testRandomFactsInAFullTree intHash addHash verifyMHash
+        it "verifies random facts in a full tree of ints"
+            $ testRandomFactsInAFullTree id intHashing verifyMInt
+        it "verifies random facts in a full tree of lists"
+            $ testRandomFactsInAFullTree pure listHashing verifyMList
+        it "verifies random facts in a full tree of hashes"
+            $ testRandomFactsInAFullTree intHash hashHashing verifyMHash
         let testRandomFactsInASparseTree
-                :: (Int -> a) -> (a -> a -> a) -> (Key -> a -> Pure a Bool) -> Property
-            testRandomFactsInASparseTree h a vpf = forAll (elements [128 .. 256])
+                :: (Int -> a)
+                -> Hashing a
+                -> (Key -> a -> Pure a Bool)
+                -> Property
+            testRandomFactsInASparseTree h hashing vpf = forAll (elements [1 .. 256])
                 $ \n ->
                     forAll (genSomePaths n) $ \keys ->
                         forAll (listOf $ elements [0 .. length keys - 1]) $ \ks -> do
                             let kvs = zip keys $ h <$> [1 ..]
-                                tree = inserted a kvs
+                                tree = inserted hashing kvs
                             forM_ ks $ \m -> do
                                 let (testKey, testValue) = kvs !! m
                                     (r, _m) =
                                         runPure tree $ vpf testKey testValue
                                 r `shouldBe` True
-        it "verifies random facts in a sparse tree"
-            $ testRandomFactsInASparseTree id (+) verifyMInt
-        it "verifies random hash facts in a sparse tree"
-            $ testRandomFactsInASparseTree intHash addHash verifyMHash
+        it "verifies random facts in a sparse tree of ints"
+            $ testRandomFactsInASparseTree id intHashing verifyMInt
+        it "verifies random facts in a sparse tree of lists"
+            $ testRandomFactsInASparseTree pure listHashing verifyMList
+        it "verifies random facts in a sparse tree of hashes"
+            $ testRandomFactsInASparseTree intHash hashHashing verifyMHash
         it "rejects the root deleted fact" $ do
             let (r, _) = runPure [] $ do
                     insertMInt [] 0
@@ -101,24 +191,27 @@ spec = do
             r `shouldBe` False
         let testRandomDeletedFactsInASparseTree
                 :: (Int -> a)
-                -> (a -> a -> a)
+                -> Hashing a
                 -> (Key -> a -> Pure a Bool)
                 -> Property
-            testRandomDeletedFactsInASparseTree h a vpf =
+            testRandomDeletedFactsInASparseTree h hashing vpf =
                 forAll (elements [128 .. 256])
                     $ \n ->
                         forAll (genSomePaths n) $ \keys ->
                             forAll (listOf $ elements [0 .. length keys - 1])
                                 $ \ks -> do
                                     let kvs = zip keys $ h <$> [1 ..]
-                                        tree = inserted a kvs
+                                        tree = inserted hashing kvs
                                     forM_ ks $ \m -> do
                                         let (testKey, testValue) = kvs !! m
                                             (r, _m) =
-                                                runPure (delete a tree testKey)
+                                                runPure (delete hashing tree testKey)
                                                     $ vpf testKey testValue
                                         r `shouldBe` False
         it "rejects a random deleted int fact"
-            $ testRandomDeletedFactsInASparseTree id (+) verifyMInt
+            $ testRandomDeletedFactsInASparseTree id intHashing verifyMInt
         it "rejects a random deleted hash fact"
-            $ testRandomDeletedFactsInASparseTree intHash addHash verifyMHash
+            $ testRandomDeletedFactsInASparseTree
+                intHash
+                hashHashing
+                verifyMHash

@@ -56,7 +56,6 @@ library
     CSMT
     CSMT.Backend.Pure
     CSMT.Backend.RocksDB
-    CSMT.Backend.RocksDB.Key
     CSMT.Deletion
     CSMT.Frontend.CLI.App
     CSMT.Hashes
@@ -98,7 +97,6 @@ library test-lib
   exposed-modules:  CSMT.Test.Lib
   build-depends:
     , base
-    , containers
     , csmt
     , QuickCheck
 
@@ -124,7 +122,6 @@ test-suite unit-tests
   type:               exitcode-stdio-1.0
   main-is:            main.hs
   other-modules:
-    CSMT.Backend.RocksDB.KeySpec
     CSMT.Backend.RocksDBSpec
     CSMT.DeletionSpec
     CSMT.HashesSpec

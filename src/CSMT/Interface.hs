@@ -10,6 +10,7 @@ module CSMT.Interface
 
       -- * Interface Types
     , Indirect (..)
+    , Hashing (..)
     , Op (..)
     , Change
     , Query
@@ -17,8 +18,32 @@ module CSMT.Interface
     , fromBool
     , toBool
     , root
+    , putKey
+    , getKey
+    , putIndirect
+    , getIndirect
+    , putDirection
+    , getDirection
+    , getSizedByteString
+    , putSizedByteString
+    , addWithDirection
     )
 where
+
+import Data.Bits (Bits (..))
+import Data.ByteArray (convert)
+import Data.ByteArray qualified as BA
+import Data.List (unfoldr)
+import Data.Serialize
+    ( Get
+    , PutM
+    , getByteString
+    , getWord16be
+    , getWord8
+    , putByteString
+    , putWord16be
+    , putWord8
+    )
 
 -- | Key segment
 data Direction = L | R deriving (Show, Eq, Ord)
@@ -79,9 +104,88 @@ compareKeys (x : xs) (y : ys)
         in  (x : j, o, r)
     | otherwise = ([], x : xs, y : ys)
 
-root :: Monad m => CSMT m a -> m (Maybe a)
-root csmt = do
+root :: Monad m => Hashing a -> CSMT m a -> m (Maybe a)
+root hsh csmt = do
     mi <- query csmt []
-    case mi of
-        Nothing -> return Nothing
-        Just Indirect{value} -> return (Just value)
+    pure $ case mi of
+        Nothing -> Nothing
+        Just i -> Just $ rootHash hsh i
+
+bigendian :: [Int]
+bigendian = [7, 6 .. 0]
+
+putDirection :: Direction -> PutM ()
+putDirection d = do
+    putWord8 $ if toBool d then 1 else 0
+
+getDirection :: Get Direction
+getDirection = do
+    b <- getWord8
+    case b of
+        0 -> return L
+        1 -> return R
+        _ -> fail "Invalid direction byte"
+
+putKey :: Key -> PutM ()
+putKey k = do
+    let bytes = BA.pack $ unfoldr unconsDirection k
+    putWord16be $ fromIntegral $ length k
+    putByteString bytes
+  where
+    unconsDirection :: (Num a, Bits a) => Key -> Maybe (a, Key)
+    unconsDirection [] = Nothing
+    unconsDirection ds =
+        let (byteBits, rest) = splitAt 8 ds
+            byte = foldl setBitFromDir 0 (zip bigendian byteBits)
+        in  Just (byte, rest)
+
+    setBitFromDir :: Bits b => b -> (Int, Direction) -> b
+    setBitFromDir b (i, dir)
+        | toBool dir = setBit b i
+        | otherwise = b
+
+getKey :: Get Key
+getKey = do
+    len <- getWord16be
+    let (l, r) = len `divMod` 8
+        lr = if r == 0 then l else l + 1
+    ba <- getByteString (fromIntegral lr)
+    return
+        $ take (fromIntegral len)
+        $ concatMap byteToDirections (BA.unpack ba)
+  where
+    byteToDirections :: Bits b => b -> Key
+    byteToDirections byte = [if testBit byte i then R else L | i <- bigendian]
+
+putSizedByteString :: BA.ByteArrayAccess a => a -> PutM ()
+putSizedByteString bs = do
+    let len = fromIntegral $ BA.length bs
+    putWord16be len
+    putByteString $ convert bs
+
+getSizedByteString :: BA.ByteArray a => Get a
+getSizedByteString = do
+    len <- getWord16be
+    bs <- getByteString (fromIntegral len)
+    return $ convert bs
+
+-- | Serialize an Indirect to a ByteString
+putIndirect
+    :: BA.ByteArrayAccess a => Indirect a -> PutM ()
+putIndirect Indirect{jump, value} = do
+    putKey jump
+    putSizedByteString value
+
+-- | Deserialize a ByteString back to an Indirect
+getIndirect :: BA.ByteArray a => Get (Indirect a)
+getIndirect = Indirect <$> getKey <*> getSizedByteString
+
+data Hashing a = Hashing
+    { rootHash :: Indirect a -> a
+    , combineHash :: Indirect a -> Indirect a -> a
+    }
+
+addWithDirection
+    :: Hashing a -> Direction -> Indirect a -> Indirect a -> a
+addWithDirection Hashing{combineHash} L left right = combineHash left right
+addWithDirection Hashing{combineHash} R left right = combineHash right left

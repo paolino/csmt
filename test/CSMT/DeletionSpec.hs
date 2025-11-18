@@ -6,7 +6,6 @@ where
 
 import CSMT
     ( Direction (L, R)
-    , Indirect (..)
     , Op (..)
     , pureCSMT
     , query
@@ -24,6 +23,7 @@ import CSMT.Test.Lib
     , indirect
     , insertInt
     , inserted
+    , intHashing
     , mkDeletionPath
     )
 import Test.Hspec (Spec, describe, it, shouldBe)
@@ -46,14 +46,14 @@ spec = do
               in
                 mp
                     `shouldBe` Just
-                        (Branch [] L (Value [] 1) (Indirect [] 2))
+                        (Branch [] L (Value [] 1) (indirect [] 2))
         it "constructs a deletion path for a tree with jumps"
             $ let
                 rs0 = insertInt [] [L, L] (1 :: Int)
                 rs1 = insertInt rs0 [L, R] (2 :: Int)
                 mp = mkDeletionPath rs1 [L, L]
               in
-                mp `shouldBe` Just (Branch [L] L (Value [] 1) (Indirect [] 2))
+                mp `shouldBe` Just (Branch [L] L (Value [] 1) (indirect [] 2))
         it "constructs a deletion path for a deeper tree with jumps"
             $ let
                 rs0 = insertInt [] [L, L, R] (1 :: Int)
@@ -62,6 +62,7 @@ spec = do
                 mp0 = mkDeletionPath rs2 [L, L, R]
                 mp1 = mkDeletionPath rs2 [L, R, L]
                 mp2 = mkDeletionPath rs2 [R, L, R]
+                rs3 = deleteInt rs2 [R, L, R]
               in
                 do
                     mp0
@@ -73,9 +74,9 @@ spec = do
                                     []
                                     L
                                     (Value [R] 1)
-                                    (Indirect [L] 2)
+                                    (indirect [L] 2)
                                 )
-                                (Indirect [L, R] 3)
+                                (indirect [L, R] 3)
                             )
                     mp1
                         `shouldBe` Just
@@ -86,9 +87,9 @@ spec = do
                                     []
                                     R
                                     (Value [L] 2)
-                                    (Indirect [R] 1)
+                                    (indirect [R] 1)
                                 )
-                                (Indirect [L, R] 3)
+                                (indirect [L, R] 3)
                             )
                     mp2
                         `shouldBe` Just
@@ -96,8 +97,10 @@ spec = do
                                 []
                                 R
                                 (Value [L, R] 3)
-                                (Indirect [] 3)
+                                (indirect [] 4)
                             )
+                    rs3 `shouldBe` rs1
+
         it "constructs a deletion path for a deeper tree with jumps"
             $ let
                 rs0 = insertInt [] [L, L, L] (1 :: Int)
@@ -117,9 +120,9 @@ spec = do
                                     [L]
                                     L
                                     (Value [] 1)
-                                    (Indirect [] 2)
+                                    (indirect [] 2)
                                 )
-                                (Indirect [R, R] 3)
+                                (indirect [R, R] 3)
                             )
                     mp1
                         `shouldBe` Just
@@ -130,9 +133,9 @@ spec = do
                                     [L]
                                     R
                                     (Value [] 2)
-                                    (Indirect [] 1)
+                                    (indirect [] 1)
                                 )
-                                (Indirect [R, R] 3)
+                                (indirect [R, R] 3)
                             )
                     mp2
                         `shouldBe` Just
@@ -140,7 +143,7 @@ spec = do
                                 []
                                 R
                                 (Value [R, R] 3)
-                                (Indirect [L] 3)
+                                (indirect [L] 3)
                             )
 
         it "deletes the singleton tree"
@@ -175,7 +178,7 @@ spec = do
               in
                 do
                     dll
-                        `shouldBe` [ ([], indirect [] 9)
+                        `shouldBe` [ ([], indirect [] 10)
                                    , ([R], indirect [] 7)
                                    , ([L], indirect [R] 2)
                                    , ([R, L], indirect [] 3)
@@ -189,7 +192,7 @@ spec = do
                                    , ([R, R], indirect [] 4)
                                    ]
                     drl
-                        `shouldBe` [ ([], indirect [] 7)
+                        `shouldBe` [ ([], indirect [] 8)
                                    , ([L], indirect [] 3)
                                    , ([R], indirect [R] 4)
                                    , ([L, L], indirect [] 1)
@@ -212,7 +215,7 @@ spec = do
               in
                 do
                     dlrl
-                        `shouldBe` [ ([], indirect [] 5)
+                        `shouldBe` [ ([], indirect [] 6)
                                    , ([L], indirect [R] 2)
                                    , ([R], indirect [L] 3)
                                    ]
@@ -243,7 +246,7 @@ spec = do
                             []
                             L
                             (Value [R] 2)
-                            (Indirect [L] 3)
+                            (indirect [L] 3)
                         )
         it "computes the right ops to delete [L,R] from [[L, R], [R, L]]"
             $ let
@@ -251,7 +254,7 @@ spec = do
                 rs1 = insertInt rs0 [L, R] (2 :: Int)
                 rs2 = insertInt rs1 [R, L] (3 :: Int)
                 Just mp = mkDeletionPath rs2 [L, R]
-                ops = deletionPathToOps (+) mp
+                ops = deletionPathToOps intHashing mp
               in
                 ops
                     `shouldBe` [ Insert [] (indirect [R, L] 3)
@@ -264,7 +267,7 @@ spec = do
             $ \n -> forAll (randomPaths n) $ \(inserting, deleting) -> do
                 let
                     kvs = zip inserting [1 :: Int .. 2 ^ n]
-                    full = inserted (+) kvs
+                    full = inserted intHashing kvs
                     emptied = foldl deleteInt full deleting
                 emptied `shouldBe` []
 

@@ -15,17 +15,24 @@ module CSMT.Test.Lib
     , insertM
     , insertMInt
     , intHash
+    , intHashing
     , mkDeletionPath
     , proofM
-    , summed
+    -- , summed
     , verifyM
     , verifyMHash
     , verifyMInt
+    , verifyMList
+    , listHashing
+    , keyToListOfInt
+    , insertMHash
+    , insertMList
     )
 where
 
 import CSMT
     ( Direction (L, R)
+    , Hashing
     , InMemoryDB
     , Indirect (..)
     , Key
@@ -43,13 +50,10 @@ import CSMT.Deletion
     , deleting
     , newDeletionPath
     )
-import CSMT.Hashes (Hash, addHash, mkHash)
+import CSMT.Hashes (Hash, hashHashing, mkHash)
+import CSMT.Interface (Hashing (..))
 import Data.Foldable (Foldable (..), foldl')
-import Data.Functor ((<&>))
-import Data.List (isPrefixOf, nub)
-import Data.List.NonEmpty qualified as NE
-import Data.Map qualified as Map
-import Data.Map.Strict (Map)
+import Data.List (nub)
 import Data.String (IsString (..))
 import Test.QuickCheck
     ( listOf
@@ -58,76 +62,120 @@ import Test.QuickCheck
     )
 import Test.QuickCheck.Gen (Gen, elements)
 
-insert :: (a -> a -> a) -> InMemoryDB a -> Key -> a -> InMemoryDB a
-insert a m k v = snd $ runPure m $ insertM a k v
+intHashing :: Hashing Int
+intHashing =
+    Hashing
+        { rootHash = \(Indirect k v) -> keyToInt k + v
+        , combineHash = \(Indirect kl l) (Indirect kr r) ->
+            keyToInt kl + keyToInt kr + l + r
+        }
+insert
+    :: Hashing a
+    -> InMemoryDB a
+    -> Key
+    -> a
+    -> InMemoryDB a
+insert hashing m k v = snd $ runPure m $ insertM hashing k v
 
-delete :: (a -> a -> a) -> InMemoryDB a -> Key -> InMemoryDB a
-delete a m k = snd $ runPure m $ deleteM a k
+delete
+    :: Hashing a -> InMemoryDB a -> Key -> InMemoryDB a
+delete hashing m k = snd $ runPure m $ deleteM hashing k
 
 deleteInt :: InMemoryDB Int -> Key -> InMemoryDB Int
-deleteInt = delete (+)
-
+deleteInt = delete intHashing
 insertInt :: InMemoryDB Int -> Key -> Int -> InMemoryDB Int
-insertInt = insert (+)
+insertInt = insert intHashing
 
-insertM :: (a -> a -> a) -> Key -> a -> Pure a ()
+insertM :: Hashing a -> Key -> a -> Pure a ()
 insertM = inserting pureCSMT
 
-deleteM :: (a -> a -> a) -> Key -> Pure a ()
+deleteM :: Hashing a -> Key -> Pure a ()
 deleteM = deleting pureCSMT
 
 insertMInt :: Key -> Int -> Pure Int ()
-insertMInt = insertM (+)
+insertMInt = insertM intHashing
+
+insertMHash :: Key -> Hash -> Pure Hash ()
+insertMHash = insertM hashHashing
+
+insertMList :: Key -> [Int] -> Pure [Int] ()
+insertMList = insertM listHashing
+
+keyToInt :: Key -> Int
+keyToInt = foldl' (\acc d -> acc * 2 + dirToBit d) 0
+  where
+    dirToBit L = 0
+    dirToBit R = 1
 
 deleteMInt :: Key -> Pure Int ()
-deleteMInt = deleteM (+)
+deleteMInt = deleteM intHashing
 
 proofM :: Key -> Pure a (Maybe (Proof a))
 proofM = mkInclusionProof pureCSMT
 
-verifyM :: Eq a => (a -> a -> a) -> Key -> a -> Pure a Bool
-verifyM a k v = do
+verifyM :: Eq a => Hashing a -> Key -> a -> Pure a Bool
+verifyM hashing k v = do
     mp <- proofM k
     case mp of
         Nothing -> pure False
-        Just p -> verifyInclusionProof pureCSMT a v p
+        Just p -> verifyInclusionProof pureCSMT hashing v p
 
 verifyMInt :: Key -> Int -> Pure Int Bool
-verifyMInt = verifyM (+)
+verifyMInt = verifyM intHashing
 
+verifyMList :: Key -> [Int] -> Pure [Int] Bool
+verifyMList = verifyM listHashing
+
+keyToListOfInt :: Key -> [Int]
+keyToListOfInt [] = [-1]
+keyToListOfInt xs = flip fmap xs $ \case
+    L -> 0
+    R -> 1
+
+listHashing :: Hashing [Int]
+listHashing =
+    Hashing
+        { rootHash = \(Indirect k v) -> keyToListOfInt k <> v
+        , combineHash = \(Indirect kl l) (Indirect kr r) ->
+            keyToListOfInt kl <> l <> keyToListOfInt kr <> r
+        }
 verifyMHash :: Key -> Hash -> Pure Hash Bool
-verifyMHash = verifyM addHash
+verifyMHash = verifyM hashHashing
 
 indirect :: Key -> a -> Indirect a
-indirect p v = Indirect{jump = p, value = v}
+indirect jump value = Indirect{jump, value}
 
 intHash :: Int -> Hash
 intHash = mkHash . fromString . show
 
-inserted :: Foldable t => (a -> a -> a) -> t (Key, a) -> InMemoryDB a
-inserted a = foldl' (\m (k, v) -> insert a m k v) []
+inserted
+    :: Foldable t
+    => Hashing a
+    -> t (Key, a)
+    -> InMemoryDB a
+inserted hashing = foldl' (\m (k, v) -> insert hashing m k v) []
 
-summed :: Int -> [(Key, Int)] -> Map Key (Indirect Int)
-summed n kvs =
-    Map.fromList $ allInits n <&> \x ->
-        let
-            w = (Map.fromList (toList kvs) Map.!)
-        in
-            ( x
-            , indirect []
-                $ foldl' (+) 0
-                $ NE.fromList
-                $ fmap w
-                $ filter (isPrefixOf x)
-                $ allPaths n
-            )
-  where
-    allInits :: Int -> [Key]
-    allInits 0 = [[]]
-    allInits c =
-        allInits (c - 1) <> do
-            p <- allInits (c - 1)
-            [p, L : p, R : p]
+-- summed :: Int -> [(Key, Int)] -> Map Key (Indirect Int)
+-- summed n kvs =
+--     Map.fromList $ allInits n <&> \x ->
+--         let
+--             w = (Map.fromList (toList kvs) Map.!)
+--         in
+--             ( x
+--             , indirect []
+--                 $ foldl' (+) 0
+--                 $ NE.fromList
+--                 $ fmap w
+--                 $ filter (isPrefixOf x)
+--                 $ allPaths n
+--             )
+--   where
+--     allInits :: Int -> [Key]
+--     allInits 0 = [[]]
+--     allInits c =
+--         allInits (c - 1) <> do
+--             p <- allInits (c - 1)
+--             [p, L : p, R : p]
 
 allPaths :: Int -> [Key]
 allPaths 0 = [[]]
@@ -152,3 +200,13 @@ genSomePaths n = fmap nub <$> listOf1 $ do
 
 mkDeletionPath :: InMemoryDB a -> Key -> Maybe (DeletionPath a)
 mkDeletionPath s = fst . runPure s . newDeletionPath (query pureCSMT)
+
+-- showState :: Show a => Pure a ()
+-- showState = do
+--     s <- get
+--     pTraceShow s $ pure ()
+
+-- showProof :: Show a => Key -> Pure a ()
+-- showProof k = do
+--     p <- proofM k
+--     pTraceShow p $ pure ()

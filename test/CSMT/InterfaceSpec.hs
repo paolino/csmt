@@ -6,8 +6,11 @@ where
 import CSMT
     ( Direction (L, R)
     , compareKeys
+    , getKey
+    , putKey
     )
 import CSMT.Test.Lib (genKey)
+import Data.Serialize.Extra (evalPutM, unsafeEvalGet)
 import Test.Hspec (Spec, describe, it, shouldBe)
 import Test.QuickCheck (Testable (property), forAll, vectorOf)
 
@@ -42,3 +45,11 @@ spec = do
                             (d1 : _, d2 : _) -> d1 /= d2
                             _ -> True
                 _ -> error "vectorOf produced wrong number of keys"
+    describe "key convert to bytes and back" $ do
+        it "is identity"
+            $ property
+            $ forAll genKey
+            $ \key -> do
+                let bs = evalPutM $ putKey key
+                    key' = unsafeEvalGet getKey bs
+                key' `shouldBe` key

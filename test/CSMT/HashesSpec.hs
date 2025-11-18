@@ -6,17 +6,27 @@ import CSMT.Hashes
     , parseProof
     , renderProof
     )
-import CSMT.Interface (Direction (..))
-import CSMT.Proofs (Proof)
+import CSMT.Interface (Direction (..), Indirect (..))
+import CSMT.Proofs (Proof (..), ProofStep (..))
 import Data.ByteString qualified as B
 import Test.Hspec (Spec, describe, it, shouldBe)
 import Test.QuickCheck (Gen, Testable (..), elements, forAll, listOf)
 
 genProofs :: Gen (Proof Hash)
-genProofs = listOf $ do
-    dir <- elements [L, R]
-    hashValue <- mkHash . B.pack <$> listOf (elements [0 .. 255])
-    return (dir, hashValue)
+genProofs = do
+    proofRootJump <- listOf $ elements [L, R]
+    proofSteps <- listOf $ do
+        dir <- elements [L, R]
+        sibilingValue <- mkHash . B.pack <$> listOf (elements [0 .. 255])
+        stepJump <- listOf $ elements [L, R]
+        sibilingJump <- listOf $ elements [L, R]
+        return
+            $ ProofStep
+                { stepDirection = dir
+                , stepSibiling = Indirect{jump = sibilingJump, value = sibilingValue}
+                , stepJump = stepJump
+                }
+    return $ Proof{proofSteps, proofRootJump}
 
 spec :: Spec
 spec = describe "Hashes" $ do

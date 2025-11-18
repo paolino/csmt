@@ -6,18 +6,23 @@ module CSMT.Backend.RocksDB
     , RocksDB
     , RunRocksDB (..)
     , unsafeWithRocksDB
+    , rocksValueToIndirect
+    , indirectToRocksValue
     )
 where
 
 import CSMT.Interface
     ( CSMT (..)
     , Change
+    , Indirect
     , Key
     , Op (..)
     , Query
+    , getIndirect
+    , putIndirect
+    , putKey
     )
 
-import CSMT.Backend.RocksDB.Key
 import Control.Concurrent (newEmptyMVar, putMVar, readMVar)
 import Control.Concurrent.Async (async, link)
 import Control.Monad ((<=<))
@@ -25,6 +30,7 @@ import Control.Monad.Trans.Class (MonadTrans (..))
 import Control.Monad.Trans.Reader (ReaderT (..), ask)
 import Data.ByteArray (ByteArray)
 import Data.ByteString (ByteString)
+import Data.Serialize.Extra (evalPutM, unsafeEvalGet)
 import Database.RocksDB
     ( BatchOp (..)
     , Config (..)
@@ -36,8 +42,14 @@ import Database.RocksDB
 
 type RocksDB = ReaderT DB IO
 
+rocksValueToIndirect :: ByteArray a => ByteString -> Indirect a
+rocksValueToIndirect = unsafeEvalGet getIndirect
+
+indirectToRocksValue :: ByteArray a => Indirect a -> ByteString
+indirectToRocksValue = evalPutM . putIndirect
+
 mkKey :: Key -> ByteString
-mkKey = rocksPathKeyToRocksKey . keyToRocksPathKey
+mkKey = evalPutM . putKey
 
 rocksDBQuery :: ByteArray a => Query RocksDB a
 rocksDBQuery k = do

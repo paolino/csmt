@@ -17,7 +17,7 @@ import CSMT.Backend.RocksDB
     , withRocksDB
     )
 import CSMT.Deletion (deleting)
-import CSMT.Hashes (Hash, addHash, mkHash)
+import CSMT.Hashes (Hash, hashHashing, mkHash)
 import CSMT.Interface
     ( Direction (..)
     , Indirect (..)
@@ -52,10 +52,10 @@ tempDB action = withSystemTempDirectory "rocksdb-test"
         withRocksDB path action
 
 iM :: Key -> Hash -> RocksDB ()
-iM = inserting rocksDBCSMT addHash
+iM = inserting rocksDBCSMT hashHashing
 
 dM :: Key -> RocksDB ()
-dM = deleting (rocksDBCSMT @Hash) addHash
+dM = deleting (rocksDBCSMT @Hash) hashHashing
 
 pfM
     :: ByteArray a
@@ -68,7 +68,7 @@ vpfM k v = do
     mp <- pfM k
     case mp of
         Nothing -> pure False
-        Just p -> verifyInclusionProof rocksDBCSMT addHash v p
+        Just p -> verifyInclusionProof rocksDBCSMT hashHashing v p
 
 testRandomFactsInASparseTree
     :: RunRocksDB
@@ -102,7 +102,11 @@ spec = around tempDB $ do
             $ \_run -> pure @IO ()
         it "can insert a csmt node and retrieve it and delete it"
             $ \(RunRocksDB run) -> run $ do
-                let v = Indirect{jump = [], value = "test value" :: ByteString}
+                let v =
+                        Indirect
+                            { jump = []
+                            , value = "test value" :: ByteString
+                            }
                 change rocksDBCSMT [Insert [] v]
                 r <- rocksDBCSMT `query` []
                 liftIO $ r `shouldBe` Just v

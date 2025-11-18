@@ -1,7 +1,8 @@
 {-# LANGUAGE StrictData #-}
 
 module CSMT.Proofs
-    ( Proof
+    ( Proof (..)
+    , ProofStep (..)
     , mkInclusionProof
     , foldProof
     , verifyInclusionProof
@@ -11,8 +12,10 @@ where
 import CSMT.Interface
     ( CSMT (CSMT, query)
     , Direction (..)
-    , Indirect (Indirect, value)
+    , Hashing (..)
+    , Indirect (..)
     , Key
+    , addWithDirection
     , opposite
     )
 import Control.Monad.Trans.Maybe (MaybeT (MaybeT, runMaybeT))
@@ -21,39 +24,71 @@ import Data.List (isPrefixOf)
 
 import Control.Monad (guard)
 
-type Proof a = [(Direction, a)]
+data ProofStep a = ProofStep
+    { stepDirection :: Direction
+    , stepJump :: Key
+    , stepSibiling :: Indirect a
+    }
+    deriving (Show, Eq)
+
+data Proof a = Proof
+    { proofSteps :: [ProofStep a]
+    , proofRootJump :: Key
+    }
+    deriving (Show, Eq)
 
 -- | Collect a proof for the presence of a key in the CSMT
-mkInclusionProof :: Monad m => CSMT m a -> Key -> m (Maybe (Proof a))
-mkInclusionProof CSMT{query} key = runMaybeT $ go [] key []
+mkInclusionProof
+    :: Monad m
+    => CSMT m a
+    -> Key
+    -> m (Maybe (Proof a))
+mkInclusionProof CSMT{query} key = runMaybeT $ do
+    Indirect jump _ <- MaybeT $ query []
+    guard $ isPrefixOf jump key
+    rs <- go jump $ drop (length jump) key
+    pure $ Proof{proofSteps = reverse rs, proofRootJump = jump}
   where
-    go _ [] rs = pure rs
-    go u ks rs = do
-        Indirect jump _ <- MaybeT $ query u
-        guard $ jump `isPrefixOf` ks
-        case drop (length jump) ks of
-            [] -> pure rs
-            (k : ks') -> do
-                o <- MaybeT $ query (u <> jump <> [opposite k])
-                go (u <> jump <> [k]) ks' ((k, value o) : rs)
+    go _ [] = pure []
+    go u (k : ks) = do
+        Indirect jump _ <- MaybeT $ query (u <> [k])
+        guard $ isPrefixOf jump ks
+        stepSibiling <- MaybeT $ query (u <> [opposite k])
+        let step =
+                ProofStep
+                    { stepDirection = k
+                    , stepJump = jump
+                    , stepSibiling
+                    }
+        (step :)
+            <$> go
+                (u <> (k : jump))
+                (drop (length jump) ks)
 
 -- | Fold a proof into a single value
-foldProof :: (a -> a -> a) -> a -> Proof a -> a
-foldProof add = foldl' step
+foldProof :: Hashing a -> a -> Proof a -> a
+foldProof hashing value Proof{proofSteps, proofRootJump} =
+    rootHash hashing (Indirect proofRootJump rootValue)
   where
-    step acc (L, h) = add acc h
-    step acc (R, h) = add h acc
+    rootValue = foldl' step value proofSteps
+    step acc ProofStep{stepDirection, stepSibiling, stepJump} =
+        addWithDirection
+            hashing
+            stepDirection
+            (Indirect stepJump acc)
+            stepSibiling
 
 -- | Verify a proof of given the included value
 verifyInclusionProof
     :: (Eq a, Monad m)
     => CSMT m a
-    -> (a -> a -> a)
+    -> Hashing a
     -> a
     -> Proof a
     -> m Bool
-verifyInclusionProof CSMT{query} add value proof = do
-    mv <- query []
+verifyInclusionProof csmt hashing value proof = do
+    mv <- query csmt []
     pure $ case mv of
-        Just Indirect{value = rootHash} -> rootHash == foldProof add value proof
+        Just rootValue ->
+            rootHash hashing rootValue == foldProof hashing value proof
         Nothing -> False
