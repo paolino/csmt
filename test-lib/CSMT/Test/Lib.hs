@@ -27,6 +27,7 @@ module CSMT.Test.Lib
     , keyToListOfInt
     , insertMHash
     , insertMList
+    , identityFromKV
     )
 where
 
@@ -52,8 +53,7 @@ import CSMT.Deletion
     , newDeletionPath
     )
 import CSMT.Hashes (Hash, hashHashing, mkHash)
-import CSMT.Interface (Hashing (..))
-import Data.ByteString (ByteString)
+import CSMT.Interface (FromKV (..), Hashing (..))
 import Data.Foldable (Foldable (..), foldl')
 import Data.List (nub)
 import Data.String (IsString (..))
@@ -64,6 +64,9 @@ import Test.QuickCheck
     )
 import Test.QuickCheck.Gen (Gen, elements)
 
+identityFromKV :: FromKV Key a a
+identityFromKV = FromKV{fromK = id, fromV = id}
+
 intHashing :: Hashing Int
 intHashing =
     Hashing
@@ -73,38 +76,45 @@ intHashing =
         }
 insert
     :: Ord k
-    => Hashing a
+    => FromKV k v a
+    -> Hashing a
     -> InMemoryDB k v a
-    -> Key
-    -> a
+    -> k
+    -> v
     -> InMemoryDB k v a
-insert hashing m k v = snd $ runPure m $ insertM hashing k v
+insert fromKV hashing m k v = snd $ runPure m $ insertM fromKV hashing k v
 
 delete
-    :: Ord k => Hashing a -> InMemoryDB k v a -> Key -> InMemoryDB k v a
-delete hashing m k = snd $ runPure m $ deleteM hashing k
+    :: Ord k
+    => FromKV k v a
+    -> Hashing a
+    -> InMemoryDB k v a
+    -> k
+    -> InMemoryDB k v a
+delete fromKV hashing m k = snd $ runPure m $ deleteM fromKV hashing k
 
-deleteInt :: Ord k => InMemoryDB k v Int -> Key -> InMemoryDB k v Int
-deleteInt = delete intHashing
+deleteInt :: InMemoryDB Key Int Int -> Key -> InMemoryDB Key Int Int
+deleteInt = delete identityFromKV intHashing
 
 insertInt
-    :: InMemoryDB Int Int Int -> Key -> Int -> InMemoryDB Int Int Int
-insertInt = insert intHashing
+    :: InMemoryDB Key Int Int -> Key -> Int -> InMemoryDB Key Int Int
+insertInt = insert identityFromKV intHashing
 
-insertM :: Ord k => Hashing a -> Key -> a -> Pure k v a ()
-insertM = inserting pureBackend
+insertM
+    :: Ord k => FromKV k v a -> Hashing a -> k -> v -> Pure k v a ()
+insertM = inserting . pureBackend
 
-deleteM :: Ord k => Hashing a -> Key -> Pure k v a ()
-deleteM = deleting pureBackend
+deleteM :: Ord k => FromKV k v a -> Hashing a -> k -> Pure k v a ()
+deleteM = deleting . pureBackend
 
-insertMInt :: Key -> Int -> Pure Int Int Int ()
-insertMInt = insertM intHashing
+insertMInt :: Key -> Int -> Pure Key Int Int ()
+insertMInt = insertM FromKV{fromK = id, fromV = id} intHashing
 
-insertMHash :: Key -> Hash -> Pure ByteString ByteString Hash ()
-insertMHash = insertM hashHashing
+insertMHash :: Key -> Hash -> Pure Key Hash Hash ()
+insertMHash = insertM FromKV{fromK = id, fromV = id} hashHashing
 
-insertMList :: Key -> [Int] -> Pure [Int] [Int] [Int] ()
-insertMList = insertM listHashing
+insertMList :: Key -> [Int] -> Pure Key [Int] [Int] ()
+insertMList = insertM FromKV{fromK = id, fromV = id} listHashing
 
 keyToInt :: Key -> Int
 keyToInt = foldl' (\acc d -> acc * 2 + dirToBit d) 0
@@ -112,24 +122,30 @@ keyToInt = foldl' (\acc d -> acc * 2 + dirToBit d) 0
     dirToBit L = 0
     dirToBit R = 1
 
-deleteMInt :: Ord k => Key -> Pure k v Int ()
-deleteMInt = deleteM intHashing
+deleteMInt :: Key -> Pure Key Int Int ()
+deleteMInt = deleteM FromKV{fromK = id, fromV = id} intHashing
 
-proofM :: Ord k => Key -> Pure k v a (Maybe (Proof a))
-proofM = mkInclusionProof pureBackend
+proofM :: Ord k => FromKV k v a -> k -> Pure k v a (Maybe (Proof a))
+proofM = mkInclusionProof . pureBackend
 
-verifyM :: (Eq a, Ord k) => Hashing a -> Key -> a -> Pure k v a Bool
-verifyM hashing k v = do
-    mp <- proofM k
+verifyM
+    :: (Eq a, Ord k)
+    => FromKV k v a
+    -> Hashing a
+    -> k
+    -> v
+    -> Pure k v a Bool
+verifyM fromKV hashing k v = do
+    mp <- proofM fromKV k
     case mp of
         Nothing -> pure False
-        Just p -> verifyInclusionProof pureBackend hashing v p
+        Just p -> verifyInclusionProof (pureBackend fromKV) hashing v p
 
-verifyMInt :: Ord k => Key -> Int -> Pure k v Int Bool
-verifyMInt = verifyM intHashing
+verifyMInt :: Key -> Int -> Pure Key Int Int Bool
+verifyMInt = verifyM FromKV{fromK = id, fromV = id} intHashing
 
-verifyMList :: Ord k => Key -> [Int] -> Pure k v [Int] Bool
-verifyMList = verifyM listHashing
+verifyMList :: Key -> [Int] -> Pure Key [Int] [Int] Bool
+verifyMList = verifyM FromKV{fromK = id, fromV = id} listHashing
 
 keyToListOfInt :: Key -> [Int]
 keyToListOfInt [] = [-1]
@@ -144,8 +160,8 @@ listHashing =
         , combineHash = \(Indirect kl l) (Indirect kr r) ->
             keyToListOfInt kl <> l <> keyToListOfInt kr <> r
         }
-verifyMHash :: Key -> Hash -> Pure ByteString ByteString Hash Bool
-verifyMHash = verifyM hashHashing
+verifyMHash :: Key -> Hash -> Pure Key Hash Hash Bool
+verifyMHash = verifyM FromKV{fromK = id, fromV = id} hashHashing
 
 indirect :: Key -> a -> Indirect a
 indirect jump value = Indirect{jump, value}
@@ -155,11 +171,11 @@ intHash = mkHash . fromString . show
 
 inserted
     :: (Foldable t, Ord k)
-    => Hashing a
-    -> t (Key, a)
+    => FromKV k v a
+    -> Hashing a
+    -> t (k, v)
     -> InMemoryDB k v a
-inserted hashing = foldl' (\m (k, v) -> insert hashing m k v) emptyInMemoryDB
-
+inserted fromKV hashing = foldl' (\m (k, v) -> insert fromKV hashing m k v) emptyInMemoryDB
 allPaths :: Int -> [Key]
 allPaths 0 = [[]]
 allPaths c = do
@@ -182,8 +198,15 @@ genSomePaths n = fmap nub <$> listOf1 $ do
     go n
 
 mkDeletionPath
-    :: Ord k => InMemoryDB k v a -> Key -> Maybe (DeletionPath a)
-mkDeletionPath s = fst . runPure s . newDeletionPath (queryCSMT pureBackend)
+    :: Ord k
+    => FromKV k v a
+    -> InMemoryDB k v a
+    -> Key
+    -> Maybe (DeletionPath a)
+mkDeletionPath fromKV s =
+    fst
+        . runPure s
+        . newDeletionPath (queryCSMT $ pureBackend fromKV)
 
 -- showState :: Show a => Pure k v a ()
 -- showState = do

@@ -17,6 +17,7 @@ import CSMT.Test.Lib
     , deleteMInt
     , genPaths
     , genSomePaths
+    , identityFromKV
     , insertMHash
     , insertMInt
     , insertMList
@@ -136,17 +137,16 @@ spec = do
                     verifyMInt [R, R] 10
             r `shouldBe` True
         let testRandomFactsInAFullTree
-                :: Ord k
-                => (Int -> a)
+                :: (Int -> a)
                 -> Hashing a
-                -> (Key -> a -> Pure k v a Bool)
+                -> (Key -> a -> Pure Key a a Bool)
                 -> Property
             testRandomFactsInAFullTree h hashing vpf = forAll (elements [1 .. 8])
                 $ \n -> forAll (listOf $ elements [0]) $ \ms ->
                     forAll (genPaths n) $ \keys -> forM_ ms $ \m -> do
                         let kvs = zip keys $ h . (1000 +) <$> [1 .. 2 ^ n]
                             (testKey, testValue) = kvs !! m
-                            db = inserted hashing kvs
+                            db = inserted identityFromKV hashing kvs
                             (r, _m) =
                                 runPure db
                                     $ vpf testKey testValue
@@ -158,17 +158,16 @@ spec = do
         it "verifies random facts in a full tree of hashes"
             $ testRandomFactsInAFullTree intHash hashHashing verifyMHash
         let testRandomFactsInASparseTree
-                :: Ord k
-                => (Int -> a)
+                :: (Int -> a)
                 -> Hashing a
-                -> (Key -> a -> Pure k v a Bool)
+                -> (Key -> a -> Pure Key a a Bool)
                 -> Property
             testRandomFactsInASparseTree h hashing vpf = forAll (elements [1 .. 256])
                 $ \n ->
                     forAll (genSomePaths n) $ \keys ->
                         forAll (listOf $ elements [0 .. length keys - 1]) $ \ks -> do
                             let kvs = zip keys $ h <$> [1 ..]
-                                tree = inserted hashing kvs
+                                tree = inserted identityFromKV hashing kvs
                             forM_ ks $ \m -> do
                                 let (testKey, testValue) = kvs !! m
                                     (r, _m) =
@@ -193,10 +192,9 @@ spec = do
                     verifyMInt [L] 0
             r `shouldBe` False
         let testRandomDeletedFactsInASparseTree
-                :: Ord k
-                => (Int -> a)
+                :: (Int -> a)
                 -> Hashing a
-                -> (Key -> a -> Pure k v a Bool)
+                -> (Key -> a -> Pure Key a a Bool)
                 -> Property
             testRandomDeletedFactsInASparseTree h hashing vpf =
                 forAll (elements [128 .. 256])
@@ -205,11 +203,11 @@ spec = do
                             forAll (listOf $ elements [0 .. length keys - 1])
                                 $ \ks -> do
                                     let kvs = zip keys $ h <$> [1 ..]
-                                        tree = inserted hashing kvs
+                                        tree = inserted identityFromKV hashing kvs
                                     forM_ ks $ \m -> do
                                         let (testKey, testValue) = kvs !! m
                                             (r, _m) =
-                                                runPure (delete hashing tree testKey)
+                                                runPure (delete identityFromKV hashing tree testKey)
                                                     $ vpf testKey testValue
                                         r `shouldBe` False
         it "rejects a random deleted int fact"

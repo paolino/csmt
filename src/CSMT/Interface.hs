@@ -15,6 +15,9 @@ module CSMT.Interface
     , Change
     , QueryCSMT
     , Backend (..)
+    , FromKV (..)
+
+      -- * Serialization Helpers
     , fromBool
     , toBool
     , root
@@ -96,6 +99,13 @@ data Backend m k v a = Backend
     { change :: Change m k v a
     , queryCSMT :: QueryCSMT m a
     , queryKV :: QueryKV m k v
+    , fromKV :: FromKV k v a
+    }
+
+data FromKV k v a
+    = FromKV
+    { fromK :: k -> Key
+    , fromV :: v -> a
     }
 
 -- | Compare two keys and return their common prefix and the remaining suffixes

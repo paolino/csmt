@@ -14,7 +14,8 @@ import CSMT
     , runPure
     )
 import CSMT.Test.Lib
-    ( indirect
+    ( identityFromKV
+    , indirect
     , insertInt
     )
 import Test.Hspec (Spec, describe, it, shouldBe)
@@ -101,7 +102,7 @@ spec = do
                 _d12 =
                     runPure rs1
                         $ mkCompose
-                            (queryCSMT pureBackend)
+                            (queryCSMT $ pureBackend identityFromKV)
                             [L, L]
                             3
                 rs2 = seq rs1 $ insertInt rs1 [L, L] (3 :: Int)

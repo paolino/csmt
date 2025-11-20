@@ -11,6 +11,7 @@ where
 import CSMT.Interface
     ( Backend (..)
     , Direction (..)
+    , FromKV (..)
     , Hashing (..)
     , Indirect (..)
     , Key
@@ -37,14 +38,13 @@ inserting
     => Backend m k v a
     -- ^ Backend interface of the CSMT
     -> Hashing a
-    -> Key
-    -- ^ Key to insert at
-    -> a
+    -> k
+    -> v
     -- ^ Hash to insert
     -> m ()
-inserting (Backend i q _) hashing key value = do
-    c <- mkCompose q key value
-    i $ snd $ scanCompose hashing c
+inserting (Backend i q _ FromKV{fromK, fromV}) hashing k v = do
+    c <- mkCompose q (fromK k) (fromV v)
+    i $ (<> [InsertKV k v]) . snd $ scanCompose hashing c
 
 -- Scan a Compose tree and produce the resulting hash and list of inserts
 scanCompose

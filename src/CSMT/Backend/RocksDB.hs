@@ -14,6 +14,7 @@ where
 import CSMT.Interface
     ( Backend (..)
     , Change
+    , FromKV (..)
     , Indirect
     , Key
     , Op (..)
@@ -23,6 +24,7 @@ import CSMT.Interface
     , putKey
     )
 
+import CSMT.Hashes (byteStringToKey)
 import Control.Concurrent (newEmptyMVar, putMVar, readMVar)
 import Control.Concurrent.Async (async, link)
 import Control.Monad ((<=<))
@@ -34,9 +36,11 @@ import Data.Serialize.Extra (evalPutM, unsafeEvalGet)
 import Database.RocksDB
     ( BatchOp (..)
     , Config (..)
-    , DB
+    , DB (columnFamilies)
     , get
+    , getCF
     , withDB
+    , withDBCF
     , write
     )
 
@@ -51,21 +55,31 @@ indirectToRocksValue = evalPutM . putIndirect
 mkKey :: Key -> ByteString
 mkKey = evalPutM . putKey
 
-rocksDBQuery :: ByteArray a => QueryCSMT RocksDB a
-rocksDBQuery k = do
+rocksDBQueryCSMT :: ByteArray a => QueryCSMT RocksDB a
+rocksDBQueryCSMT k = do
     let rdbk = mkKey k
     db <- ask
     r <- lift $ get db rdbk
     pure $ rocksValueToIndirect <$> r
 
-rocksDBChange :: ByteArray a => Change RocksDB k v a
-rocksDBChange kvs = do
-    let ops = prepare kvs
+rocksDBQueryKV :: ByteString -> RocksDB (Maybe ByteString)
+rocksDBQueryKV k = do
     db <- ask
+    let cfkv = case columnFamilies db of
+            [cf] -> cf
+            _ -> error "rocksDBQueryKV: unexpected number of column families"
+    lift $ getCF db cfkv k
+
+rocksDBChange :: ByteArray a => Change RocksDB ByteString ByteString a
+rocksDBChange kvs = do
+    db <- ask
+    let cfkv = case columnFamilies db of
+            [cf] -> cf
+            _ -> error "rocksDBChange: unexpected number of column families"
+    let ops = prepare cfkv kvs
     lift $ write db ops
   where
-    prepare :: ByteArray a => [Op k v a] -> [BatchOp]
-    prepare = concatMap $ \case
+    prepare cfkv = concatMap $ \case
         InsertCSMT k ind ->
             let rdbk = mkKey k
                 rdbv = indirectToRocksValue ind
@@ -73,22 +87,29 @@ rocksDBChange kvs = do
         DeleteCSMT k ->
             let rdbk = mkKey k
             in  [Del rdbk]
-        InsertKV _ _ -> []
-        DeleteKV _ -> []
+        InsertKV k v -> [PutCF cfkv k v]
+        DeleteKV k -> [DelCF cfkv k]
 
-rocksDBBackend :: ByteArray a => Backend RocksDB k v a
-rocksDBBackend =
+rocksDBBackend
+    :: ByteArray a
+    => (ByteString -> a) -> Backend RocksDB ByteString ByteString a
+rocksDBBackend mkA =
     Backend
         { change = rocksDBChange
-        , queryCSMT = rocksDBQuery
-        , queryKV = \_ -> pure Nothing
+        , queryCSMT = rocksDBQueryCSMT
+        , queryKV = rocksDBQueryKV
+        , fromKV =
+            FromKV
+                { fromK = byteStringToKey
+                , fromV = mkA
+                }
         }
 
 newtype RunRocksDB = RunRocksDB (forall a. RocksDB a -> IO a)
 
 withRocksDB :: FilePath -> (RunRocksDB -> IO b) -> IO b
 withRocksDB path action = do
-    withDB path config $ \db -> do
+    withDBCF path configCSMT [("kv", configKV)] $ \db -> do
         action $ RunRocksDB $ flip runReaderT db
 
 unsafeWithRocksDB :: FilePath -> IO (RunRocksDB, IO ())
@@ -97,7 +118,7 @@ unsafeWithRocksDB path = do
     dbv <- newEmptyMVar
     done <- newEmptyMVar
     link <=< async $ do
-        withDB path config $ \db -> do
+        withDB path configCSMT $ \db -> do
             putMVar dbv (RunRocksDB $ flip runReaderT db)
             readMVar wait
         putMVar done ()
@@ -105,8 +126,8 @@ unsafeWithRocksDB path = do
     let close = putMVar wait ()
     pure (rdb, close >> readMVar done)
 
-config :: Config
-config =
+configCSMT :: Config
+configCSMT =
     Config
         { createIfMissing = True
         , errorIfExists = False
@@ -114,4 +135,15 @@ config =
         , maxFiles = Nothing
         , prefixLength = Nothing
         , bloomFilter = False
+        }
+
+configKV :: Config
+configKV =
+    Config
+        { createIfMissing = True
+        , errorIfExists = False
+        , paranoidChecks = False
+        , maxFiles = Nothing
+        , prefixLength = Nothing
+        , bloomFilter = True
         }

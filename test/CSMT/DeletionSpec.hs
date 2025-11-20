@@ -22,15 +22,21 @@ import CSMT.Interface (Key)
 import CSMT.Test.Lib
     ( deleteInt
     , genPaths
+    , identityFromKV
     , indirect
     , insertInt
     , inserted
     , intHashing
     , mkDeletionPath
     )
-import Data.ByteString (ByteString)
 import Test.Hspec (Spec, describe, it, shouldBe)
-import Test.QuickCheck (Gen, elements, forAll, getSize, shuffle)
+import Test.QuickCheck
+    ( Gen
+    , elements
+    , forAll
+    , getSize
+    , shuffle
+    )
 
 spec :: Spec
 spec = do
@@ -38,14 +44,16 @@ spec = do
         it "constructs a deletion path for a singleton tree"
             $ let
                 rs0 = insertInt emptyInMemoryDB [] (1 :: Int)
-                (mp, _) = runPure rs0 $ newDeletionPath (queryCSMT pureBackend) []
+                (mp, _) =
+                    runPure rs0
+                        $ newDeletionPath (queryCSMT $ pureBackend identityFromKV) []
               in
                 mp `shouldBe` Just (Value [] 1)
         it "constructs a deletion path for a tree with siblings"
             $ let
                 rs0 = insertInt emptyInMemoryDB [L] (1 :: Int)
                 rs1 = insertInt rs0 [R] (2 :: Int)
-                mp = mkDeletionPath rs1 [L]
+                mp = mkDeletionPath identityFromKV rs1 [L]
               in
                 mp
                     `shouldBe` Just
@@ -54,7 +62,7 @@ spec = do
             $ let
                 rs0 = insertInt emptyInMemoryDB [L, L] (1 :: Int)
                 rs1 = insertInt rs0 [L, R] (2 :: Int)
-                mp = mkDeletionPath rs1 [L, L]
+                mp = mkDeletionPath identityFromKV rs1 [L, L]
               in
                 mp `shouldBe` Just (Branch [L] L (Value [] 1) (indirect [] 2))
         it "constructs a deletion path for a deeper tree with jumps"
@@ -62,9 +70,9 @@ spec = do
                 rs0 = insertInt emptyInMemoryDB [L, L, R] (1 :: Int)
                 rs1 = insertInt rs0 [L, R, L] (2 :: Int)
                 rs2 = insertInt rs1 [R, L, R] (3 :: Int)
-                mp0 = mkDeletionPath rs2 [L, L, R]
-                mp1 = mkDeletionPath rs2 [L, R, L]
-                mp2 = mkDeletionPath rs2 [R, L, R]
+                mp0 = mkDeletionPath identityFromKV rs2 [L, L, R]
+                mp1 = mkDeletionPath identityFromKV rs2 [L, R, L]
+                mp2 = mkDeletionPath identityFromKV rs2 [R, L, R]
                 rs3 = deleteInt rs2 [R, L, R]
               in
                 do
@@ -109,9 +117,9 @@ spec = do
                 rs0 = insertInt emptyInMemoryDB [L, L, L] (1 :: Int)
                 rs1 = insertInt rs0 [L, L, R] (2 :: Int)
                 rs2 = insertInt rs1 [R, R, R] (3 :: Int)
-                mp0 = mkDeletionPath rs2 [L, L, L]
-                mp1 = mkDeletionPath rs2 [L, L, R]
-                mp2 = mkDeletionPath rs2 [R, R, R]
+                mp0 = mkDeletionPath identityFromKV rs2 [L, L, L]
+                mp1 = mkDeletionPath identityFromKV rs2 [L, L, R]
+                mp2 = mkDeletionPath identityFromKV rs2 [R, R, R]
               in
                 do
                     mp0
@@ -241,7 +249,7 @@ spec = do
                 rs0 = emptyInMemoryDB
                 rs1 = insertInt rs0 [L, R] (2 :: Int)
                 rs2 = insertInt rs1 [R, L] (3 :: Int)
-                mp = mkDeletionPath rs2 [L, R]
+                mp = mkDeletionPath identityFromKV rs2 [L, R]
               in
                 mp
                     `shouldBe` Just
@@ -256,7 +264,7 @@ spec = do
                 rs0 = emptyInMemoryDB
                 rs1 = insertInt rs0 [L, R] (2 :: Int)
                 rs2 = insertInt rs1 [R, L] (3 :: Int)
-                Just mp = mkDeletionPath rs2 [L, R]
+                Just mp = mkDeletionPath identityFromKV rs2 [L, R]
                 ops = deletionPathToOps intHashing mp
               in
                 ops
@@ -270,9 +278,9 @@ spec = do
             $ \n -> forAll (randomPaths n) $ \(inserting, deleting) -> do
                 let
                     kvs = zip inserting [1 :: Int .. 2 ^ n]
-                    full = inserted @_ @ByteString intHashing kvs
+                    full = inserted identityFromKV intHashing kvs
                     emptied = foldl deleteInt full deleting
-                emptied `shouldBe` emptyInMemoryDB @_ @ByteString
+                emptied `shouldBe` emptyInMemoryDB @_ @Int
 
 randomPaths :: Int -> Gen ([Key], [Key])
 randomPaths k = do

@@ -15,13 +15,15 @@ module CSMT.Hashes
     , delete
     , hashHashing
     , keyToHash
+    , byteStringToKey
+    , queryKV
     )
 where
 
 import CSMT.Deletion (deleting)
 import CSMT.Insertion (inserting)
 import CSMT.Interface
-    ( Backend (..)
+    ( Backend
     , Direction (..)
     , Hashing (..)
     , Key
@@ -87,11 +89,22 @@ keyToHash :: Key -> Hash
 keyToHash = mkHash . evalPutM . putKey
 
 insert
-    :: Monad m => Backend m k v Hash -> ByteString -> ByteString -> m ()
-insert csmt k v = inserting csmt hashHashing (byteStringToKey k) (mkHash v)
+    :: Monad m
+    => Backend m ByteString ByteString Hash
+    -> ByteString
+    -> ByteString
+    -> m ()
+insert csmt = inserting csmt hashHashing
 
-delete :: Monad m => Backend m k v Hash -> ByteString -> m ()
-delete csmt k = deleting csmt hashHashing (byteStringToKey k)
+delete
+    :: Monad m => Backend m ByteString ByteString Hash -> ByteString -> m ()
+delete csmt = deleting csmt hashHashing
+
+queryKV
+    :: Backend m ByteString ByteString Hash
+    -> ByteString
+    -> m (Maybe ByteString)
+queryKV = Interface.queryKV
 
 byteStringToKey :: ByteString -> Key
 byteStringToKey bs = concatMap byteToDirections (B.unpack $ renderHash $ mkHash bs)
@@ -138,14 +151,15 @@ parseProof bs =
         Right pf -> Just pf
 
 generateInclusionProof
-    :: Monad m => Backend m k v Hash -> ByteString -> m (Maybe ByteString)
+    :: Monad m
+    => Backend m ByteString v Hash -> ByteString -> m (Maybe ByteString)
 generateInclusionProof csmt k = do
-    mp <- Proof.mkInclusionProof csmt (byteStringToKey k)
+    mp <- Proof.mkInclusionProof csmt k
     pure $ fmap renderProof mp
 
 verifyInclusionProof
     :: Monad m
-    => Backend m k v Hash
+    => Backend m k ByteString Hash
     -> ByteString
     -> ByteString
     -> m Bool
@@ -153,5 +167,4 @@ verifyInclusionProof csmt value proofBs = do
     case parseProof proofBs of
         Nothing -> pure False
         Just proof -> do
-            let valueHash = mkHash value
-            Proof.verifyInclusionProof csmt hashHashing valueHash proof
+            Proof.verifyInclusionProof csmt hashHashing value proof

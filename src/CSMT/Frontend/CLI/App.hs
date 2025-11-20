@@ -2,16 +2,19 @@ module CSMT.Frontend.CLI.App (main) where
 
 import CSMT.Backend.RocksDB
     ( RunRocksDB (RunRocksDB)
-    , rocksDBBackend
     , withRocksDB
     )
+import CSMT.Backend.RocksDB qualified as RocksDB
 import CSMT.Hashes
-    ( delete
+    ( Hash
+    , delete
     , generateInclusionProof
     , insert
+    , mkHash
     , root
     , verifyInclusionProof
     )
+import CSMT.Interface (Backend)
 import Control.Monad (unless)
 import Control.Monad.Fix (fix)
 import Control.Monad.Trans.Class (MonadTrans (..))
@@ -73,6 +76,9 @@ readHash :: ByteString -> Maybe ByteString
 readHash bs = case convertFromBase Base64 bs of
     Left _ -> Nothing
     Right h -> Just h
+
+rocksDBBackend :: Backend RocksDB.RocksDB ByteString ByteString Hash
+rocksDBBackend = RocksDB.rocksDBBackend mkHash
 
 core :: Bool -> RunRocksDB -> String -> IO ()
 core isPiped (RunRocksDB run) l' = case parseCommand $ BC.pack l' of

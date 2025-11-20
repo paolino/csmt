@@ -97,7 +97,6 @@ library test-lib
   exposed-modules:  CSMT.Test.Lib
   build-depends:
     , base
-    , bytestring
     , csmt
     , QuickCheck
 
@@ -115,7 +114,6 @@ test-suite unit-tests
     , csmt:test-lib
     , filepath
     , hspec
-    , memory
     , QuickCheck
     , temporary
 

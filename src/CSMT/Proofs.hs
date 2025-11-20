@@ -10,8 +10,9 @@ module CSMT.Proofs
 where
 
 import CSMT.Interface
-    ( Backend (Backend, queryCSMT)
+    ( Backend (Backend, fromKV, queryCSMT)
     , Direction (..)
+    , FromKV (..)
     , Hashing (..)
     , Indirect (..)
     , Key
@@ -41,28 +42,29 @@ data Proof a = Proof
 mkInclusionProof
     :: Monad m
     => Backend m k v a
-    -> Key
+    -> k
     -> m (Maybe (Proof a))
-mkInclusionProof Backend{queryCSMT} key = runMaybeT $ do
+mkInclusionProof Backend{queryCSMT, fromKV} k = runMaybeT $ do
+    let key = fromK fromKV k
     Indirect jump _ <- MaybeT $ queryCSMT []
     guard $ isPrefixOf jump key
     rs <- go jump $ drop (length jump) key
     pure $ Proof{proofSteps = reverse rs, proofRootJump = jump}
   where
     go _ [] = pure []
-    go u (k : ks) = do
-        Indirect jump _ <- MaybeT $ queryCSMT (u <> [k])
+    go u (x : ks) = do
+        Indirect jump _ <- MaybeT $ queryCSMT (u <> [x])
         guard $ isPrefixOf jump ks
-        stepSibiling <- MaybeT $ queryCSMT (u <> [opposite k])
+        stepSibiling <- MaybeT $ queryCSMT (u <> [opposite x])
         let step =
                 ProofStep
-                    { stepDirection = k
+                    { stepDirection = x
                     , stepJump = jump
                     , stepSibiling
                     }
         (step :)
             <$> go
-                (u <> (k : jump))
+                (u <> (x : jump))
                 (drop (length jump) ks)
 
 -- | Fold a proof into a single value
@@ -83,10 +85,11 @@ verifyInclusionProof
     :: (Eq a, Monad m)
     => Backend m k v a
     -> Hashing a
-    -> a
+    -> v
     -> Proof a
     -> m Bool
-verifyInclusionProof csmt hashing value proof = do
+verifyInclusionProof csmt hashing v proof = do
+    let value = fromV (fromKV csmt) v
     mv <- queryCSMT csmt []
     pure $ case mv of
         Just rootValue ->

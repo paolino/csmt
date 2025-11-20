@@ -9,6 +9,7 @@ where
 import CSMT.Interface
     ( Backend (..)
     , Direction (..)
+    , FromKV (..)
     , Hashing (..)
     , Indirect (..)
     , Key
@@ -28,12 +29,12 @@ data DeletionPath a where
     deriving (Show, Eq)
 
 deleting
-    :: Monad m => Backend m k v a -> Hashing a -> Key -> m ()
-deleting csmt hashing key = do
-    mpath <- newDeletionPath (queryCSMT csmt) key
+    :: Monad m => Backend m k v a -> Hashing a -> k -> m ()
+deleting Backend{queryCSMT, change, fromKV = FromKV{fromK}} hashing key = do
+    mpath <- newDeletionPath queryCSMT (fromK key)
     case mpath of
         Nothing -> pure ()
-        Just path -> change csmt $ deletionPathToOps hashing path
+        Just path -> change $ deletionPathToOps hashing path <> [DeleteKV key]
 
 deletionPathToOps
     :: forall k v a
