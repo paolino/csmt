@@ -25,7 +25,6 @@ let
       asciinema.compress
       asciinema.resize
       pkgs.asciinema
-
     ];
     shellHook = ''
       echo "Entering shell for csmt CLI development"

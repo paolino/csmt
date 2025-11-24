@@ -8,8 +8,9 @@ WARNING: This project is in early development and is not production-ready. Use a
 ## What is CSMT?
 
 ```asciinema-player
-{
-"file": "assets/asciinema/bootstrap.cast"
+{ "file": "assets/asciinema/bootstrap.cast"
+, "mkap_theme": "none"
+, "cols": 100
 }
 ```
 This package provides:
