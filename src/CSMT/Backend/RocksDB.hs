@@ -144,5 +144,5 @@ configKV =
         , paranoidChecks = False
         , maxFiles = Nothing
         , prefixLength = Nothing
-        , bloomFilter = True
+        , bloomFilter = False
         }
