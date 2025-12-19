@@ -60,7 +60,7 @@ tempDB :: (RunRocksDB -> IO a) -> IO a
 tempDB action = withSystemTempDirectory "rocksdb-test"
     $ \dir -> do
         let path = dir </> "testdb"
-        withRocksDB path action
+        withRocksDB path 1 1 action
 
 iM :: ByteString -> ByteString -> RocksDB ()
 iM = inserting rocksDBBackend hashHashing

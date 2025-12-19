@@ -36,7 +36,7 @@ mkKey = renderHash . mkHash . fromString . show
 envCSMT :: FilePath -> Int -> IO WithRocksDb
 envCSMT path n = do
     let dbPath = path </> "rocksdb"
-    (RunRocksDB run, kill) <- unsafeWithRocksDB dbPath
+    (RunRocksDB run, kill) <- unsafeWithRocksDB dbPath 1 1
     let r = run $ do
             let csmt = rocksDBBackend mkHash
             forM_ [1 .. n] $ \i -> do
