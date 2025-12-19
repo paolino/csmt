@@ -36,14 +36,18 @@ import Data.ByteString.Char8 qualified as BC
 import OptEnvConf
     ( Parser
     , argument
+    , auto
     , env
     , help
+    , long
     , metavar
+    , option
     , reader
     , runParser
     , setting
     , str
     )
+import OptEnvConf.Setting qualified as Opt
 import Paths_csmt (version)
 import System.Console.Haskeline
     ( defaultSettings
@@ -215,31 +219,60 @@ renderKey = BC.pack . fmap dirToByte
   where
     dirToByte I.L = 'L'
     dirToByte I.R = 'R'
-newtype Options = Options
+data Options = Options
     { optDbPath :: FilePath
+    , optCSMTMaxFiles :: Int
+    , optKVMaxFiles :: Int
     }
 
 parseDbPath :: Parser FilePath
 parseDbPath =
     setting
         [ argument
-        , metavar "DB_PATH"
+        , metavar "DIR"
         , help "Path to RocksDB database"
         , reader str
         , env "CSMT_DB_PATH"
+        ]
+
+parseCSMTMaxFiles :: Parser Int
+parseCSMTMaxFiles =
+    setting
+        [ option
+        , metavar "INT"
+        , long "csmt-max-files"
+        , help "Maximum number of CSMT files"
+        , reader auto
+        , env "CSMT_MAX_FILES"
+        , Opt.value 1
+        ]
+
+parseKVMaxFiles :: Parser Int
+parseKVMaxFiles =
+    setting
+        [ option
+        , metavar "INT"
+        , long "kv-max-files"
+        , help "Maximum number of KV files"
+        , reader auto
+        , env "KV_MAX_FILES"
+        , Opt.value 1
         ]
 
 optionsParser :: Parser Options
 optionsParser =
     Options
         <$> parseDbPath
+        <*> parseCSMTMaxFiles
+        <*> parseKVMaxFiles
 
 main :: IO ()
 main = do
-    Options{optDbPath} <- runParser version "csmt" optionsParser
+    Options{optDbPath, optCSMTMaxFiles, optKVMaxFiles} <-
+        runParser version "csmt" optionsParser
     hSetBuffering stdout LineBuffering
     hSetBuffering stdin LineBuffering
-    withRocksDB optDbPath $ \run -> do
+    withRocksDB optDbPath optCSMTMaxFiles optKVMaxFiles $ \run -> do
         isPiped <- checkPipeline
         if isPiped
             then fix $ \loop -> do

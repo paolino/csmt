@@ -91,7 +91,8 @@ rocksDBChange kvs = do
 
 rocksDBBackend
     :: ByteArray a
-    => (ByteString -> a) -> Backend RocksDB ByteString ByteString a
+    => (ByteString -> a)
+    -> Backend RocksDB ByteString ByteString a
 rocksDBBackend mkA =
     Backend
         { change = rocksDBChange
@@ -106,43 +107,53 @@ rocksDBBackend mkA =
 
 newtype RunRocksDB = RunRocksDB (forall a. RocksDB a -> IO a)
 
-withRocksDB :: FilePath -> (RunRocksDB -> IO b) -> IO b
-withRocksDB path action = do
-    withDBCF path configCSMT [("kv", configKV)] $ \db -> do
-        action $ RunRocksDB $ flip runReaderT db
+withRocksDB
+    :: FilePath
+    -> Int
+    -> Int
+    -> (RunRocksDB -> IO b)
+    -> IO b
+withRocksDB path csmtMaxFiles kvMaxFiles action = do
+    withDBCF
+        path
+        (configCSMT csmtMaxFiles)
+        [("kv", configKV kvMaxFiles)]
+        $ \db -> do
+            action $ RunRocksDB $ flip runReaderT db
 
-unsafeWithRocksDB :: FilePath -> IO (RunRocksDB, IO ())
-unsafeWithRocksDB path = do
+unsafeWithRocksDB :: FilePath -> Int -> Int -> IO (RunRocksDB, IO ())
+unsafeWithRocksDB path csmtMaxFiles kvMaxFiles = do
     wait <- newEmptyMVar
     dbv <- newEmptyMVar
     done <- newEmptyMVar
     link <=< async $ do
-        withDBCF path configCSMT [("kv", configKV)] $ \db -> do
-            putMVar dbv (RunRocksDB $ flip runReaderT db)
-            readMVar wait
+        withDBCF path (configCSMT csmtMaxFiles) [("kv", configKV kvMaxFiles)]
+            $ \db -> do
+                putMVar dbv (RunRocksDB $ flip runReaderT db)
+                readMVar wait
         putMVar done ()
     rdb <- readMVar dbv
     let close = putMVar wait ()
     pure (rdb, close >> readMVar done)
 
-configCSMT :: Config
-configCSMT =
+configCSMT :: Int -> Config
+configCSMT n =
     Config
         { createIfMissing = True
         , errorIfExists = False
         , paranoidChecks = False
-        , maxFiles = Nothing
+        , maxFiles = Just n
         , prefixLength = Nothing
         , bloomFilter = False
         }
 
-configKV :: Config
-configKV =
+configKV :: Int -> Config
+configKV n =
     Config
         { createIfMissing = True
         , errorIfExists = False
         , paranoidChecks = False
-        , maxFiles = Nothing
+        , maxFiles = Just n
         , prefixLength = Nothing
         , bloomFilter = False
         }
